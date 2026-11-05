@@ -13,7 +13,11 @@ and you find its exact pitches on a 19-fret guitar neck.
 
 - **Settings** (modelled on musictheory.net's chord exercise): chords per run, key signatures
   (one picked at random per run), major/minor/both, chord types, inversions, written-pitch range,
-  roots any/in key, one note per string, double accidentals, sound.
+  roots any/in key, guitar voicings (with max stretch and doubled notes), double accidentals, sound.
+- **Guitar voicings** are found by searching the neck: one note per string, every chord tone present,
+  all positions (open strings count as fret 0) within the max stretch. With doubled notes on,
+  shapes may repeat chord tones on adjacent strings and must fit four fingers (a barre counts as one).
+  With voicings off, chords are close-position stacks as on musictheory.net.
 - **Before each run** a fretboard shows scale degrees 1–7 for the run's key; 1, 3 and 5 are colored.
 - **During a run** you tap notes and press Check. Wrong notes turn red and you retry until correct;
   accuracy counts chords solved on the first try without "Show answer".

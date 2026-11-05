@@ -75,7 +75,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .row > .lbl { min-width: 0; }
 .row .sub { display: block; color: var(--muted); font-size: 13px; }
-.stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stepper { flex: none; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .stepper button { width: 42px; height: 38px; border: 0; background: var(--surface-2); font-size: 20px; line-height: 1; }
 .stepper output { min-width: 44px; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
@@ -121,7 +121,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 
 /* staff */
 .staff { color: var(--ink); width: 100%; min-height: 40px; }
-.staff svg { display: block; overflow: visible; }
+.staff svg { display: block; overflow: visible; fill: currentColor; stroke: currentColor; }
 .staff svg [fill]:not([fill="none"]) { fill: currentColor; }
 .staff svg [stroke]:not([stroke="none"]) { stroke: currentColor; }
 .staff .fallback { font-family: var(--font-mono); font-size: 18px; padding: 24px 8px; text-align: center; }
@@ -282,8 +282,20 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         <div class="seg" id="rootSeg" role="group" aria-label="Chord roots"><button data-roots="any">Any</button><button data-roots="key">In key only</button></div>
       </div>
       <div class="row">
-        <span class="lbl">One note per string<span class="sub">Only chords you could fret as a real shape</span></span>
-        <button class="switch" id="swOps" role="switch" aria-checked="true" aria-label="One note per string"></button>
+        <span class="lbl">Guitar voicings<span class="sub" id="opsSub"></span></span>
+        <button class="switch" id="swOps" role="switch" aria-checked="true" aria-label="Guitar voicings"></button>
+      </div>
+      <div class="row" id="rowSpan">
+        <span class="lbl">Max stretch<span class="sub" id="spanSub"></span></span>
+        <div class="stepper">
+          <button id="spanDown" aria-label="Smaller stretch">−</button>
+          <output id="spanOut">4</output>
+          <button id="spanUp" aria-label="Larger stretch">+</button>
+        </div>
+      </div>
+      <div class="row" id="rowDup">
+        <span class="lbl">Doubled notes<span class="sub">Also full shapes like barre chords, where chord tones repeat in other octaves</span></span>
+        <button class="switch" id="swDup" role="switch" aria-checked="false" aria-label="Doubled notes"></button>
       </div>
       <div class="row">
         <span class="lbl">Double sharps and flats<span class="sub">Allow spellings like B𝄫 or F𝄪</span></span>
@@ -477,7 +489,93 @@ function allAssignments(ps) {
   return out;
 }
 
+/* Guitar voicings: search the neck for real fingerings of a chord.
+   One note per string, every chord tone present, all positions (open strings
+   count as fret 0) within S.span frets. With doubled notes allowed, chord tones
+   may repeat (no identical pitches), strings must be adjacent (a strummable
+   shape) and it must fit four fingers, counting a barre at the lowest fret as one. */
+const voicingCache = new Map();
+function enumVoicings(rootPc, q, span, dup) {
+  const ck = `${rootPc}|${q.id}|${span}|${dup}`;
+  if (voicingCache.has(ck)) return voicingCache.get(ck);
+  const pcs = q.iv.map(([, semi]) => (rootPc + semi) % 12);
+  const toneOf = {}; pcs.forEach((pc, i) => { toneOf[pc] = i; });
+  const n = pcs.length, maxNotes = dup ? 6 : n;
+  const found = new Map();
+  const cur = [], counts = new Array(n).fill(0);
+  let distinct = 0;
+  const leaf = () => {
+    if (distinct < n) return;
+    if (dup) {
+      const ss = cur.map((k) => k.s);
+      if (Math.max(...ss) - Math.min(...ss) + 1 !== cur.length) return;
+      const ms = new Set(cur.map((k) => k.m));
+      if (ms.size !== cur.length) return;
+      const fr = cur.filter((k) => k.f > 0).map((k) => k.f);
+      if (fr.length > 4) {
+        const lo = Math.min(...fr);
+        const fingers = (fr.some((f) => f === lo) ? 1 : 0) + fr.filter((f) => f > lo).length;
+        if (fingers > 4) return;
+      }
+    }
+    const sorted = cur.slice().sort((a, b) => a.m - b.m);
+    const key = sorted.map((k) => k.m).join(',');
+    let v = found.get(key);
+    if (!v) { v = { midis: sorted.map((k) => k.m), bass: sorted[0].t, fingerings: [] }; found.set(key, v); }
+    v.fingerings.push(cur.map((k) => ({ s: k.s, f: k.f, m: k.m })));
+  };
+  const dfs = (s, lo, hi) => {
+    if (n - distinct > 6 - s) return;
+    if (s === 6) { leaf(); return; }
+    dfs(s + 1, lo, hi);
+    if (cur.length >= maxNotes) return;
+    for (let f = 0; f <= NFRETS; f++) {
+      const m = OPEN[s] + f, t = toneOf[m % 12];
+      if (t === undefined) continue;
+      if (!dup && counts[t]) continue;
+      const nlo = Math.min(lo, f), nhi = Math.max(hi, f);
+      if (nhi - nlo > span) continue;
+      cur.push({ s, f, m, t });
+      if (counts[t]++ === 0) distinct++;
+      dfs(s + 1, nlo, nhi);
+      cur.pop();
+      if (--counts[t] === 0) distinct--;
+    }
+  };
+  dfs(0, Infinity, -Infinity);
+  const list = [...found.values()];
+  voicingCache.set(ck, list);
+  return list;
+}
+function spellMidi(m, tone) {          // sounding midi + spelled chord tone -> written note
+  const w = m + 12;
+  return { l: tone.l, a: tone.a, o: (w - LPC[tone.l] - tone.a) / 12 - 1 };
+}
 function chordPool(S, sig) {
+  return S.ops ? voicingPool(S, sig) : closePool(S, sig);
+}
+function voicingPool(S, sig) {
+  const out = [];
+  const ka = keyAccs(sig);
+  for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
+    if (S.roots === 'key' && a !== ka[l]) continue;
+    const rootPc = (LPC[l] + a + 12) % 12;
+    for (const q of QUALS) {
+      if (!S.quals.includes(q.id)) continue;
+      const tones = q.iv.map((iv) => addIv({ l, a, o: 4 }, iv));
+      if (tones.some((t) => Math.abs(t.a) > (S.dbl ? 2 : 1))) continue;
+      for (const v of enumVoicings(rootPc, q, S.span, S.dup)) {
+        if (!S.inv && v.bass !== 0) continue;
+        const notes = v.midis.map((m) => spellMidi(m, tones[q.iv.findIndex(([, semi]) => (rootPc + semi) % 12 === m % 12)]));
+        if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
+        const close = notes.length === q.iv.length && v.midis[v.midis.length - 1] - v.midis[0] < 12;
+        out.push({ root: { l, a }, q, inv: v.bass, notes, fingerings: v.fingerings, size: notes.length, close });
+      }
+    }
+  }
+  return out;
+}
+function closePool(S, sig) {
   const out = [];
   const ka = keyAccs(sig);
   for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
@@ -493,8 +591,7 @@ function chordPool(S, sig) {
           if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
           const snd = notes.map(sounding);
           if (snd.some((m) => m < SOUND_LO || m > SOUND_HI)) continue;
-          if (S.ops && !canAssign(snd)) continue;
-          out.push({ root: { l, a }, q, inv, notes });
+          out.push({ root: { l, a }, q, inv, notes, size: notes.length, close: true });
         }
       }
     }
@@ -507,19 +604,20 @@ function pickChord(pool, prev) {
   for (let tries = 0; ; tries++) {
     const qids = [...new Set(pool.map((c) => c.q.id))];
     const sub = pool.filter((c) => c.q.id === rnd(qids));
-    const invs = [...new Set(sub.map((c) => c.inv))];
-    const inv = rnd(invs);
-    const c = rnd(sub.filter((x) => x.inv === inv));
+    const inv = rnd([...new Set(sub.map((c) => c.inv))]);
+    const sub2 = sub.filter((x) => x.inv === inv);
+    const size = rnd([...new Set(sub2.map((c) => c.size))]);
+    const c = rnd(sub2.filter((x) => x.size === size));
     if (!prev || tries > 8 || chordSig(c) !== chordSig(prev)) return c;
   }
 }
-const chordName = (c) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c.inv]}`;
+const chordName = (c) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c.inv]}${c.size > c.q.iv.length ? ', doubled' : c.close ? '' : ', open voicing'}`;
 
 /* ---------- settings ---------- */
 const DEFAULTS = {
   len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
   quals: QUALS.filter((q) => q.def).map((q) => q.id),
-  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, roots: 'any', ops: true, dbl: false, sound: true,
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, roots: 'any', ops: true, span: 4, dup: false, dbl: false, sound: true,
 };
 function normalize(s) {
   const d = { ...DEFAULTS, ...(s || {}) };
@@ -530,12 +628,13 @@ function normalize(s) {
   d.lo = Math.min(POS_MAX, Math.max(POS_MIN, +d.lo || POS_MIN));
   d.hi = Math.min(POS_MAX, Math.max(d.lo, +d.hi || DEFAULTS.hi));
   if (!['any', 'key'].includes(d.roots)) d.roots = 'any';
-  d.inv = !!d.inv; d.ops = !!d.ops; d.dbl = !!d.dbl; d.sound = d.sound !== false;
+  d.span = Math.min(6, Math.max(2, Math.round(+d.span || 4)));
+  d.inv = !!d.inv; d.ops = !!d.ops; d.dup = !!d.dup; d.dbl = !!d.dbl; d.sound = d.sound !== false;
   return d;
 }
 // What identifies a "setup" in history (sound is a preference, not part of the drill).
 function canon(s) {
-  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, roots: s.roots, ops: s.ops, dbl: s.dbl };
+  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, roots: s.roots, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl };
 }
 function setupId(s) {
   const str = JSON.stringify(canon(s));
@@ -571,7 +670,8 @@ const posName = (p) => { const n = fromPos(p); return LETTERS[n.l] + n.o; };
 function setupTitle(s) { return `${s.len} chords · ${keysSummary(s)}`; }
 function setupSub(s) {
   return [chordsSummary(s), s.inv ? 'inversions' : 'root position', `${posName(s.lo)}–${posName(s.hi)}`,
-    s.ops ? 'one per string' : 'any positions', s.roots === 'key' ? 'roots in key' : 'any root', s.dbl ? 'double ♯/♭' : null]
+    s.ops ? `guitar voicings, stretch ≤ ${s.span}` : 'close position', s.ops && s.dup ? 'doubled notes' : null,
+    s.roots === 'key' ? 'roots in key' : 'any root', s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
 }
 
@@ -712,6 +812,8 @@ function drawStaff(el, o) {
   const r = new VF.Renderer(el, VF.Renderer.Backends.SVG);
   r.resize(width, Math.ceil(H * sc));
   const ctx = r.getContext();
+  const ink = getComputedStyle(el).color || '#000';
+  ctx.setFillStyle(ink); ctx.setStrokeStyle(ink);
   ctx.scale(sc, sc);
   const lw = width / sc;
   const st = new VF.Stave(0, 0, lw - 1, { space_above_staff_ln: above, space_below_staff_ln: below, left_bar: false, right_bar: false });
@@ -953,6 +1055,9 @@ function buildSetup() {
   $('#rootSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ roots: b.dataset.roots }));
   $('#swInv').onclick = () => setS({ inv: !S.inv });
   $('#swOps').onclick = () => setS({ ops: !S.ops });
+  $('#swDup').onclick = () => setS({ dup: !S.dup });
+  $('#spanDown').onclick = () => setS({ span: S.span - 1 });
+  $('#spanUp').onclick = () => setS({ span: S.span + 1 });
   $('#swDbl').onclick = () => setS({ dbl: !S.dbl });
   $('#swSound').onclick = () => { setS({ sound: !S.sound }); if (S.sound) pluck(64); };
   $('#loUp').onclick = () => setS({ lo: Math.min(S.lo + 1, S.hi) });
@@ -987,6 +1092,14 @@ function renderSetup() {
   document.querySelectorAll('#rootSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.roots === S.roots));
   $('#swInv').setAttribute('aria-checked', S.inv);
   $('#swOps').setAttribute('aria-checked', S.ops);
+  $('#opsSub').textContent = S.ops
+    ? 'Real guitar shapes: one note per string, within the stretch below.'
+    : 'Close-position stacks like musictheory.net. Some are unplayable; tap any positions.';
+  $('#rowSpan').hidden = !S.ops; $('#rowDup').hidden = !S.ops;
+  $('#spanOut').textContent = S.span;
+  $('#spanSub').textContent = `Frets apart, open string = 0 (e.g. 5 to ${5 + S.span})`;
+  $('#spanDown').disabled = S.span <= 2; $('#spanUp').disabled = S.span >= 6;
+  $('#swDup').setAttribute('aria-checked', S.dup);
   $('#swDbl').setAttribute('aria-checked', S.dbl);
   $('#swSound').setAttribute('aria-checked', S.sound);
   $('#keysHint').textContent = S.sigs.length === 1 ? 'Every run uses this key.' : 'Each run uses one key, picked at random from the ones you select.';
@@ -1132,7 +1245,7 @@ function reveal() {
   const center = B.centerFret();
   const ps = cur.target;
   let best = null, bestScore = Infinity;
-  for (const a of allAssignments(ps)) {
+  for (const a of (cur.c.fingerings || allAssignments(ps))) {
     const fr = a.map((k) => k.f);
     const fretted = fr.filter((f) => f > 0);
     const span = fretted.length ? Math.max(...fretted) - Math.min(...fretted) : 0;
