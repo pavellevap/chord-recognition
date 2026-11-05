@@ -1,0 +1,1323 @@
+<title>Fretboard Chord Drill</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&family=Young+Serif&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.5/build/cjs/vexflow-bravura.js"></script>
+<style>
+/* Layout: one narrow column (max 600px) of swapping views; the fretboard is a horizontal scroller inside that column. */
+:root {
+  --bg: #e8ecf0;
+  --surface: #ffffff;
+  --surface-2: #f2f5f8;
+  --ink: #18202b;
+  --muted: #586373;
+  --line: #d2d9e1;
+  --staffline: #6b7480;
+  --primary: #1d2a3a;
+  --on-primary: #ffffff;
+  --root: #d33f4c;
+  --third: #d99a06;
+  --fifth: #2a78c8;
+  --good: #1b9455;
+  --bad: #d1373b;
+  --wood: #3d2619;
+  --wood-dark: #24160e;
+  --fret: #c9cdd3;
+  --nut: #ece3cc;
+  --pearl: #f5efe0;
+  --font-display: "Young Serif", Georgia, "Times New Roman", serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10141a; --surface: #19202a; --surface-2: #212a36; --ink: #e6eaf0; --muted: #9ba6b6;
+    --line: #2d3644; --staffline: #9aa3ae; --primary: #e6eaf0; --on-primary: #10141a;
+    --root: #f0606b; --third: #f1b52b; --fifth: #5aa1ec; --good: #39c27c; --bad: #f06464;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10141a; --surface: #19202a; --surface-2: #212a36; --ink: #e6eaf0; --muted: #9ba6b6;
+  --line: #2d3644; --staffline: #9aa3ae; --primary: #e6eaf0; --on-primary: #10141a;
+  --root: #f0606b; --third: #f1b52b; --fifth: #5aa1ec; --good: #39c27c; --bad: #f06464;
+  color-scheme: dark;
+}
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+#app { max-width: 600px; margin: 0 auto; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--fifth); outline-offset: 2px; }
+h1, h2 { margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+
+/* header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 14px 10px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-size: 20px; letter-spacing: .01em; }
+.tabs { display: flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.tab { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-size: 14px; color: var(--muted); }
+.tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); font-weight: 700; }
+
+.view { display: flex; flex-direction: column; gap: 14px; }
+
+/* settings groups */
+.group { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+.row > .lbl { min-width: 0; }
+.row .sub { display: block; color: var(--muted); font-size: 13px; }
+.stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stepper button { width: 42px; height: 38px; border: 0; background: var(--surface-2); font-size: 20px; line-height: 1; }
+.stepper output { min-width: 44px; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: transparent; border-radius: 8px; padding: 7px 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .14); }
+.linkbtns { display: flex; gap: 14px; }
+.link { border: 0; background: none; padding: 4px 0; color: var(--fifth); font-size: 14px; }
+
+.keygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.keybtn { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 10px; min-width: 0; }
+.keybtn.wide { grid-column: 1 / -1; }
+.keybtn .sig { font-family: var(--font-mono); font-size: 15px; min-width: 30px; }
+.keybtn .names { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.keybtn[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.keybtn[aria-pressed="true"] .names { color: var(--on-primary); opacity: .8; }
+
+.checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.checklist h3 { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13px; color: var(--muted); font-weight: 400; }
+.check { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--surface); text-align: left; font-size: 14px; min-width: 0; }
+.check .box { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; }
+.check[aria-pressed="true"] { border-color: var(--primary); }
+.check[aria-pressed="true"] .box { background: var(--primary); border-color: var(--primary); }
+.check[aria-pressed="true"] .box::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--on-primary); }
+.check .sym { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+
+.switch { position: relative; flex: none; width: 50px; height: 30px; border-radius: 999px; border: 0; background: var(--line); transition: background .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: transform .15s; }
+.switch[aria-checked="true"] { background: var(--good); }
+.switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+.rangebox { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.vstep { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.vstep span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.vstep button { width: 40px; height: 36px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; font-size: 14px; }
+.range-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: var(--muted); margin: 0; }
+.range-labels b { color: var(--ink); font-family: var(--font-mono); font-weight: 500; }
+
+.cta { position: sticky; bottom: 0; padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to bottom, transparent, var(--bg) 30%); display: flex; flex-direction: column; gap: 6px; }
+.primary { border: 0; background: var(--primary); color: var(--on-primary); border-radius: 12px; padding: 13px 18px; font-weight: 700; font-size: 16px; }
+.primary:disabled { opacity: .4; cursor: not-allowed; }
+.secondary { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 16px; font-size: 15px; }
+.note-warn { color: var(--bad); font-size: 13px; margin: 0; }
+
+/* staff */
+.staff { color: var(--ink); width: 100%; min-height: 40px; }
+.staff svg { display: block; overflow: visible; }
+.staff svg [fill]:not([fill="none"]) { fill: currentColor; }
+.staff svg [stroke]:not([stroke="none"]) { stroke: currentColor; }
+.staff .fallback { font-family: var(--font-mono); font-size: 18px; padding: 24px 8px; text-align: center; }
+.staffcard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px 10px; }
+
+/* preview */
+.keycard { display: grid; grid-template-columns: minmax(0, 150px) 1fr; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px 14px 8px 8px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.keyname { font-family: var(--font-display); font-size: 30px; line-height: 1.1; font-weight: 400; }
+.keymeta { color: var(--muted); font-size: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend i { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 11px; font-weight: 700; color: #fff; margin-right: 5px; vertical-align: middle; }
+.lg-1 { background: var(--root); } .lg-3 { background: var(--third); color: #24160e !important; } .lg-5 { background: var(--fifth); }
+.lg-o { background: var(--wood); border: 1.5px solid var(--pearl); color: var(--pearl) !important; }
+.topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pill { font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* fretboard */
+.board { width: 100%; user-select: none; -webkit-user-select: none; }
+.fb-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-radius: 10px; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
+.fb-scroll::-webkit-scrollbar { display: none; }
+.fb-svg { display: block; touch-action: manipulation; }
+.fb-num { fill: var(--muted); font: 500 11px var(--font-mono); text-anchor: middle; }
+.fb-num.dot { fill: var(--ink); font-weight: 700; }
+.mk { transition: transform .12s; }
+.mk-sel { fill: var(--pearl); stroke: #1a1008; stroke-width: 2; }
+.mk-bad { fill: var(--bad); stroke: #fff; stroke-width: 2; }
+.mk-good { fill: var(--good); stroke: #fff; stroke-width: 2; }
+.mk-ghost { fill: none; stroke: var(--pearl); stroke-width: 2.5; stroke-dasharray: 4 3; }
+.mk-x { stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
+.dg { stroke-width: 1.5; }
+.dg-1 { fill: var(--root); stroke: var(--root); }
+.dg-3 { fill: var(--third); stroke: var(--third); }
+.dg-5 { fill: var(--fifth); stroke: var(--fifth); }
+.dg-o { fill: var(--wood); stroke: var(--pearl); stroke-opacity: .7; }
+.dg-t { font: 700 12px var(--font-mono); text-anchor: middle; dominant-baseline: central; fill: #fff; pointer-events: none; }
+.dg-t.on-3 { fill: #24160e; }
+.dg-t.on-o { fill: var(--pearl); font-weight: 500; }
+.fb-mini { position: relative; height: 26px; margin-top: 8px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); touch-action: none; cursor: pointer; overflow: hidden; }
+.fb-mini-win { position: absolute; top: 2px; bottom: 2px; border-radius: 6px; border: 2px solid var(--ink); opacity: .55; pointer-events: none; }
+.fb-mini-dot { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; pointer-events: none; }
+.fb-mini-dot.inlay { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--muted); opacity: .6; }
+.fb-mini-dot.m { background: var(--ink); }
+.fb-mini-dot.bad { background: var(--bad); }
+.fb-mini-dot.good { background: var(--good); }
+.fb-mini-dot.ghost { background: transparent; border: 2px dashed var(--ink); }
+
+/* run */
+.runbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding-top: 12px; }
+.runmid { display: flex; align-items: baseline; justify-content: center; gap: 10px; min-width: 0; }
+.prog { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; }
+.keytag { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timer { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 17px; text-align: right; }
+.progressbar { height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.progressbar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .25s; }
+.feedback { min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; color: var(--muted); padding: 0 6px; }
+.feedback.bad { color: var(--bad); font-weight: 700; }
+.feedback.good { color: var(--good); font-weight: 700; }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; }
+.actions.two { grid-template-columns: 1fr 1.4fr; }
+.quit { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 6px 0; }
+.quit.armed { color: var(--bad); font-weight: 700; }
+@keyframes shake { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-5px) } 75% { transform: translateX(5px) } }
+.shake { animation: shake .25s 2; }
+
+/* results */
+.bignums { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bignum { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 2px; }
+.bignum .num { font-family: var(--font-display); font-size: 40px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.bignum .lbl { font-size: 13px; color: var(--muted); }
+.reslist { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.reslist li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.reslist li:first-child { border-top: 0; }
+.reslist .mark { font-weight: 700; }
+.reslist .ok { color: var(--good); } .reslist .miss { color: var(--bad); }
+.reslist .tries { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.compare { margin: 0; color: var(--muted); font-size: 14px; }
+.compare b { color: var(--ink); }
+
+/* history */
+.hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hitem { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.htitle { font-weight: 700; font-size: 15px; }
+.hsub { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.hstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.hstat { display: flex; flex-direction: column; }
+.hstat b { font-family: var(--font-mono); font-weight: 500; font-size: 16px; font-variant-numeric: tabular-nums; }
+.hstat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.hstat.sorted b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.hbtns { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hbtns .primary { padding: 9px 18px; font-size: 15px; }
+.rm { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 6px 0; }
+.rm.armed { color: var(--bad); font-weight: 700; }
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; padding: 22px 16px; text-align: center; color: var(--muted); }
+.empty b { color: var(--ink); display: block; margin-bottom: 4px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="app">
+  <header class="top" id="topbar">
+    <div class="brand">Fretboard Chord Drill</div>
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab" id="tabSetup" data-go="setup" aria-current="page">Practice</button>
+      <button class="tab" id="tabHistory" data-go="history">History</button>
+    </nav>
+  </header>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-setup">
+    <div class="group">
+      <div class="row">
+        <span class="lbl">Chords per run</span>
+        <div class="stepper">
+          <button id="lenDown" aria-label="Fewer chords">−</button>
+          <output id="lenOut">10</output>
+          <button id="lenUp" aria-label="More chords">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head">
+        <h2>Key signatures</h2>
+        <div class="linkbtns"><button class="link" id="keysAll">All</button><button class="link" id="keysNone">None</button></div>
+      </div>
+      <p class="hint" id="keysHint">Each run uses one key, picked at random from the ones you select.</p>
+      <div class="seg" id="tonSeg" role="group" aria-label="Key mode">
+        <button data-ton="major">Major</button><button data-ton="minor">Minor</button><button data-ton="both">Both</button>
+      </div>
+      <div class="keygrid" id="keyGrid"></div>
+    </div>
+
+    <div class="group">
+      <h2>Chords</h2>
+      <div class="checklist" id="chordList"></div>
+      <div class="row">
+        <span class="lbl">Inversions<span class="sub">Bass note can be the 3rd, 5th or 7th</span></span>
+        <button class="switch" id="swInv" role="switch" aria-checked="true" aria-label="Inversions"></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Range</h2>
+      <div class="rangebox">
+        <div class="vstep"><span>Low</span><button id="loUp" aria-label="Raise lowest note">▲</button><button id="loDown" aria-label="Lower lowest note">▼</button></div>
+        <div class="staff" id="rangeStaff"></div>
+        <div class="vstep"><span>High</span><button id="hiUp" aria-label="Raise highest note">▲</button><button id="hiDown" aria-label="Lower highest note">▼</button></div>
+      </div>
+      <p class="range-labels" id="rangeLabels"></p>
+      <p class="hint">Written pitch. Guitar sounds an octave lower than written, so written E3 is the open 6th string.</p>
+    </div>
+
+    <div class="group">
+      <h2>More options</h2>
+      <div class="row">
+        <span class="lbl">Chord roots</span>
+        <div class="seg" id="rootSeg" role="group" aria-label="Chord roots"><button data-roots="any">Any</button><button data-roots="key">In key only</button></div>
+      </div>
+      <div class="row">
+        <span class="lbl">One note per string<span class="sub">Only chords you could fret as a real shape</span></span>
+        <button class="switch" id="swOps" role="switch" aria-checked="true" aria-label="One note per string"></button>
+      </div>
+      <div class="row">
+        <span class="lbl">Double sharps and flats<span class="sub">Allow spellings like B𝄫 or F𝄪</span></span>
+        <button class="switch" id="swDbl" role="switch" aria-checked="false" aria-label="Double sharps and flats"></button>
+      </div>
+      <div class="row">
+        <span class="lbl">Sound<span class="sub">Pluck notes as you tap</span></span>
+        <button class="switch" id="swSound" role="switch" aria-checked="true" aria-label="Sound"></button>
+      </div>
+    </div>
+
+    <div class="cta">
+      <p class="hint" id="poolNote"></p>
+      <button class="primary" id="toPreview">Continue</button>
+    </div>
+  </section>
+
+  <!-- PREVIEW -->
+  <section class="view" id="view-preview" hidden>
+    <div class="topline">
+      <button class="link" id="pvBack">‹ Settings</button>
+      <span class="pill" id="pvSummary"></span>
+    </div>
+    <div class="keycard">
+      <div class="staff" id="pvStaff"></div>
+      <div>
+        <div class="eyebrow">Key for this run</div>
+        <h1 class="keyname" id="pvKey">C major</h1>
+        <div class="keymeta" id="pvMeta"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="lg-1">1</i>root</span><span><i class="lg-3">3</i>third</span><span><i class="lg-5">5</i>fifth</span><span><i class="lg-o">2</i>other scale degrees</span>
+    </div>
+    <div class="board" id="pvBoard"></div>
+    <button class="primary" id="startBtn">Start run</button>
+  </section>
+
+  <!-- RUN -->
+  <section class="view" id="view-run" hidden>
+    <div class="runbar">
+      <button class="quit" id="quitBtn">Quit</button>
+      <div class="runmid"><span class="prog" id="runProg">1 / 10</span><span class="keytag" id="runKey"></span></div>
+      <div class="timer" id="timer">0:00.0</div>
+    </div>
+    <div class="progressbar"><i id="progFill"></i></div>
+    <div class="staffcard"><div class="staff" id="runStaff"></div></div>
+    <div class="feedback" id="feedback" aria-live="polite"></div>
+    <div class="board" id="runBoard"></div>
+    <div class="actions">
+      <button class="secondary" id="clearBtn">Clear</button>
+      <button class="secondary" id="revealBtn">Show answer</button>
+      <button class="primary" id="checkBtn">Check</button>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="view" id="view-results" hidden>
+    <div class="eyebrow" id="resHead">Run complete</div>
+    <div class="bignums">
+      <div class="bignum"><span class="num" id="resAcc">–</span><span class="lbl">right on the first try</span></div>
+      <div class="bignum"><span class="num" id="resTime">–</span><span class="lbl">total time</span></div>
+    </div>
+    <p class="compare" id="resCompare"></p>
+    <ol class="reslist" id="resList"></ol>
+    <div class="actions two">
+      <button class="secondary" id="resSettings">Settings</button>
+      <button class="primary" id="resAgain">Run again</button>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="view" id="view-history" hidden>
+    <div class="group-head">
+      <h2>Your setups</h2>
+      <div class="seg" id="sortSeg" role="group" aria-label="Sort by">
+        <button data-sort="recent">Recent</button><button data-sort="score">Score</button><button data-sort="time">Time</button><button data-sort="runs">Runs</button>
+      </div>
+    </div>
+    <p class="hint" id="storeNote">Averages weight each new run at 10%; older runs fade out gradually.</p>
+    <ul class="hist" id="histList"></ul>
+    <div class="empty" id="histEmpty" hidden><b>No runs yet</b>Finish a run and its settings show up here with your average score and time. Tap Play to repeat a setup.</div>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+
+/* ---------- music model ---------- */
+const LETTERS = 'CDEFGAB';
+const LPC = [0, 2, 4, 5, 7, 9, 11];
+const OPEN = [64, 59, 55, 50, 45, 40];          // sounding MIDI, index 0 = 1st (high E) string
+const NFRETS = 19;
+const SOUND_LO = 40, SOUND_HI = OPEN[0] + NFRETS; // E2 .. B5 sounding
+const POS_MIN = 3 * 7 + 2;                        // written E3
+const POS_MAX = 6 * 7 + 6;                        // written B6
+const ACC_TXT = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
+const ACC_VF = { '-2': 'bb', '-1': 'b', '0': 'n', '1': '#', '2': '##' };
+const midiOf = (n) => 12 * (n.o + 1) + LPC[n.l] + n.a;   // written pitch
+const sounding = (n) => midiOf(n) - 12;
+const posOf = (n) => n.o * 7 + n.l;
+const fromPos = (p) => ({ l: ((p % 7) + 7) % 7, o: Math.floor(p / 7), a: 0 });
+const nName = (n) => LETTERS[n.l] + ACC_TXT[n.a];
+const ordinal = (k) => k + (k === 1 ? 'st' : k === 2 ? 'nd' : k === 3 ? 'rd' : 'th');
+
+const QUALS = [
+  { id: 'maj',    name: 'major triad',          sym: '',      iv: [[0,0],[2,4],[4,7]],          group: 't', def: true },
+  { id: 'min',    name: 'minor triad',          sym: 'm',     iv: [[0,0],[2,3],[4,7]],          group: 't', def: true },
+  { id: 'aug',    name: 'augmented triad',      sym: '+',     iv: [[0,0],[2,4],[4,8]],          group: 't', def: true },
+  { id: 'dim',    name: 'diminished triad',     sym: '°',     iv: [[0,0],[2,3],[4,6]],          group: 't', def: true },
+  { id: 'dom7',   name: 'dominant 7th',         sym: '7',     iv: [[0,0],[2,4],[4,7],[6,10]],   group: 's', def: true },
+  { id: 'maj7',   name: 'major 7th',            sym: 'maj7',  iv: [[0,0],[2,4],[4,7],[6,11]],   group: 's', def: true },
+  { id: 'min7',   name: 'minor 7th',            sym: 'm7',    iv: [[0,0],[2,3],[4,7],[6,10]],   group: 's', def: true },
+  { id: 'mmaj7',  name: 'minor-major 7th',      sym: 'mMaj7', iv: [[0,0],[2,3],[4,7],[6,11]],   group: 's', def: false },
+  { id: 'hdim7',  name: 'half-diminished 7th',  sym: 'ø7',    iv: [[0,0],[2,3],[4,6],[6,10]],   group: 's', def: true },
+  { id: 'dim7',   name: 'diminished 7th',       sym: '°7',    iv: [[0,0],[2,3],[4,6],[6,9]],    group: 's', def: true },
+  { id: 'aug7',   name: 'augmented 7th',        sym: '+7',    iv: [[0,0],[2,4],[4,8],[6,10]],   group: 's', def: false },
+  { id: 'augmaj7',name: 'augmented major 7th',  sym: '+maj7', iv: [[0,0],[2,4],[4,8],[6,11]],   group: 's', def: false },
+];
+const QBY = Object.fromEntries(QUALS.map((q) => [q.id, q]));
+const INV_NAMES = ['root position', '1st inversion', '2nd inversion', '3rd inversion'];
+
+const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6]; // F C G D A E B
+const FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3];  // B E A D G C F
+function keyAccs(sig) {
+  const a = [0, 0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < Math.abs(sig); i++) {
+    if (sig > 0) a[SHARP_ORDER[i]] = 1; else a[FLAT_ORDER[i]] = -1;
+  }
+  return a;
+}
+function majorTonic(sig) {
+  let l = 0;
+  for (let i = 0; i < Math.abs(sig); i++) l = (l + (sig > 0 ? 4 : 3)) % 7;
+  return { l, a: keyAccs(sig)[l] };
+}
+function minorTonic(sig) {
+  const l = (majorTonic(sig).l + 5) % 7;
+  return { l, a: keyAccs(sig)[l] };
+}
+const vfKey = (sig) => { const t = majorTonic(sig); return LETTERS[t.l] + (t.a > 0 ? '#' : t.a < 0 ? 'b' : ''); };
+const sigText = (sig) => sig === 0 ? 'no sharps or flats' : `${Math.abs(sig)} ${sig > 0 ? 'sharp' : 'flat'}${Math.abs(sig) > 1 ? 's' : ''}`;
+const sigShort = (sig) => sig === 0 ? '♮' : Math.abs(sig) + (sig > 0 ? '♯' : '♭');
+const keyLabel = (sig, mode) => { const t = mode === 'minor' ? minorTonic(sig) : majorTonic(sig); return `${nName(t)} ${mode}`; };
+
+function addIv(n, [steps, semis]) {
+  const L = n.l + steps;
+  const o = n.o + Math.floor(L / 7);
+  const l = L % 7;
+  const a = midiOf(n) + semis - (12 * (o + 1) + LPC[l]);
+  return { l, a, o };
+}
+function buildChord(root, q, inv) {
+  const tones = q.iv.map((iv) => addIv(root, iv));
+  return tones.slice(inv).concat(tones.slice(0, inv).map((t) => ({ ...t, o: t.o + 1 })));
+}
+
+// Can these sounding pitches be fretted on six different strings?
+function canAssign(ps) {
+  const used = [false, false, false, false, false, false];
+  const rec = (i) => {
+    if (i === ps.length) return true;
+    for (let s = 0; s < 6; s++) {
+      if (used[s]) continue;
+      const f = ps[i] - OPEN[s];
+      if (f < 0 || f > NFRETS) continue;
+      used[s] = true;
+      if (rec(i + 1)) return true;
+      used[s] = false;
+    }
+    return false;
+  };
+  return rec(0);
+}
+function allAssignments(ps) {
+  const out = [], used = [false, false, false, false, false, false], cur = [];
+  const rec = (i) => {
+    if (i === ps.length) { out.push(cur.slice()); return; }
+    for (let s = 0; s < 6; s++) {
+      if (used[s]) continue;
+      const f = ps[i] - OPEN[s];
+      if (f < 0 || f > NFRETS) continue;
+      used[s] = true; cur.push({ s, f, m: ps[i] });
+      rec(i + 1);
+      cur.pop(); used[s] = false;
+    }
+  };
+  rec(0);
+  return out;
+}
+
+function chordPool(S, sig) {
+  const out = [];
+  const ka = keyAccs(sig);
+  for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
+    if (S.roots === 'key' && a !== ka[l]) continue;
+    for (const q of QUALS) {
+      if (!S.quals.includes(q.id)) continue;
+      const nInv = S.inv ? q.iv.length : 1;
+      for (let inv = 0; inv < nInv; inv++) {
+        const base = buildChord({ l, a, o: 0 }, q, inv);
+        if (base.some((t) => Math.abs(t.a) > (S.dbl ? 2 : 1))) continue;
+        for (let sh = 1; sh <= 8; sh++) {
+          const notes = base.map((t) => ({ ...t, o: t.o + sh }));
+          if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
+          const snd = notes.map(sounding);
+          if (snd.some((m) => m < SOUND_LO || m > SOUND_HI)) continue;
+          if (S.ops && !canAssign(snd)) continue;
+          out.push({ root: { l, a }, q, inv, notes });
+        }
+      }
+    }
+  }
+  return out;
+}
+const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const chordSig = (c) => c.notes.map(midiOf).join(',') + c.notes.map((n) => n.l).join('');
+function pickChord(pool, prev) {
+  for (let tries = 0; ; tries++) {
+    const qids = [...new Set(pool.map((c) => c.q.id))];
+    const sub = pool.filter((c) => c.q.id === rnd(qids));
+    const invs = [...new Set(sub.map((c) => c.inv))];
+    const inv = rnd(invs);
+    const c = rnd(sub.filter((x) => x.inv === inv));
+    if (!prev || tries > 8 || chordSig(c) !== chordSig(prev)) return c;
+  }
+}
+const chordName = (c) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c.inv]}`;
+
+/* ---------- settings ---------- */
+const DEFAULTS = {
+  len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
+  quals: QUALS.filter((q) => q.def).map((q) => q.id),
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, roots: 'any', ops: true, dbl: false, sound: true,
+};
+function normalize(s) {
+  const d = { ...DEFAULTS, ...(s || {}) };
+  d.len = Math.min(50, Math.max(1, Math.round(+d.len || 10)));
+  d.sigs = [...new Set((Array.isArray(d.sigs) ? d.sigs : DEFAULTS.sigs).map(Number).filter((x) => x >= -7 && x <= 7))].sort((a, b) => a - b);
+  if (!['major', 'minor', 'both'].includes(d.ton)) d.ton = 'major';
+  d.quals = QUALS.map((q) => q.id).filter((id) => (Array.isArray(d.quals) ? d.quals : DEFAULTS.quals).includes(id));
+  d.lo = Math.min(POS_MAX, Math.max(POS_MIN, +d.lo || POS_MIN));
+  d.hi = Math.min(POS_MAX, Math.max(d.lo, +d.hi || DEFAULTS.hi));
+  if (!['any', 'key'].includes(d.roots)) d.roots = 'any';
+  d.inv = !!d.inv; d.ops = !!d.ops; d.dbl = !!d.dbl; d.sound = d.sound !== false;
+  return d;
+}
+// What identifies a "setup" in history (sound is a preference, not part of the drill).
+function canon(s) {
+  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, roots: s.roots, ops: s.ops, dbl: s.dbl };
+}
+function setupId(s) {
+  const str = JSON.stringify(canon(s));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return 's-' + (h >>> 0).toString(16).padStart(8, '0');
+}
+function rangesText(nums) {
+  const parts = []; let i = 0;
+  while (i < nums.length) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    parts.push(j > i ? `${nums[i]}–${nums[j]}` : `${nums[i]}`);
+    i = j + 1;
+  }
+  return parts.join(',');
+}
+function keysSummary(s) {
+  const modes = s.ton === 'both' ? ['major', 'minor'] : [s.ton];
+  if (s.sigs.length === 1) return modes.map((m) => keyLabel(s.sigs[0], m)).join(' / ');
+  const parts = [];
+  if (s.sigs.includes(0)) parts.push('♮');
+  const fl = s.sigs.filter((x) => x < 0).map((x) => -x).sort((a, b) => a - b);
+  const sh = s.sigs.filter((x) => x > 0);
+  if (fl.length) parts.push(rangesText(fl) + '♭');
+  if (sh.length) parts.push(rangesText(sh) + '♯');
+  return `Keys ${parts.join(' ')} · ${s.ton === 'both' ? 'major & minor' : s.ton}`;
+}
+function chordsSummary(s) {
+  return s.quals.map((id) => { const q = QBY[id]; return q.sym || 'maj'; }).join(' ');
+}
+const posName = (p) => { const n = fromPos(p); return LETTERS[n.l] + n.o; };
+function setupTitle(s) { return `${s.len} chords · ${keysSummary(s)}`; }
+function setupSub(s) {
+  return [chordsSummary(s), s.inv ? 'inversions' : 'root position', `${posName(s.lo)}–${posName(s.hi)}`,
+    s.ops ? 'one per string' : 'any positions', s.roots === 'key' ? 'roots in key' : 'any root', s.dbl ? 'double ♯/♭' : null]
+    .filter(Boolean).join(' · ');
+}
+
+/* ---------- storage ---------- */
+const LS_KEY = 'fcd.v1';
+const store = {
+  settings: normalize(null), setups: {}, db: null, uid: null, cloud: 'pending',
+  loadLocal() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d.settings) this.settings = normalize(d.settings);
+      if (d.setups && typeof d.setups === 'object') this.setups = d.setups;
+    } catch (e) { /* storage blocked */ }
+  },
+  saveLocal() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ settings: this.settings, setups: this.setups })); } catch (e) { /* ignore */ }
+  },
+  chain: Promise.resolve(),
+  write(id, data) {
+    if (!this.db || !this.uid) return;
+    const ref = this.db.doc(`data/users/${this.uid}/${id}`);
+    const attempt = () => (data === null ? ref.delete() : ref.set(data));
+    this.chain = this.chain.then(attempt).catch((e) => {
+      if (e && e.code === 'unavailable') return new Promise((r) => setTimeout(r, 1200 + Math.random() * 800)).then(attempt);
+      throw e;
+    }).catch((e) => { console.warn('save failed', e); this.cloud = 'error'; renderStoreNote(); });
+  },
+  prefsTimer: 0,
+  saveSettings() {
+    this.saveLocal();
+    clearTimeout(this.prefsTimer);
+    this.prefsTimer = setTimeout(() => this.write('prefs', { settings: this.settings }), 1200);
+  },
+  saveSetup(st) {
+    this.setups[st.id] = st;
+    this.saveLocal();
+    this.write(st.id, st);
+  },
+  removeSetup(id) {
+    delete this.setups[id];
+    this.saveLocal();
+    this.write(id, null);
+  },
+  async initCloud() {
+    try {
+      if (!window.claude || typeof window.claude.use !== 'function') { this.cloud = 'local'; return; }
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      const uid = user ? await user.id() : null;
+      if (!db || !uid) { this.cloud = 'local'; return; }
+      const snap = await Promise.race([
+        db.collection(`data/users/${uid}`).get(),
+        new Promise((_, rej) => setTimeout(() => rej({ code: 'timeout' }), 10000)),
+      ]);
+      this.db = db; this.uid = uid;
+      const remote = {};
+      let remoteSettings = null;
+      snap.docs.forEach((d) => {
+        const v = d.data();
+        if (!v) return;
+        if (d.id === 'prefs') remoteSettings = v.settings;
+        else if (d.id.startsWith('s-')) remote[d.id] = v;
+      });
+      // Upload anything that only exists on this device, then adopt the account copy.
+      for (const [id, st] of Object.entries(this.setups)) {
+        if (!remote[id]) { remote[id] = st; this.write(id, st); }
+        else if ((st.last || 0) > (remote[id].last || 0)) { remote[id] = st; this.write(id, st); }
+      }
+      this.setups = remote;
+      if (remoteSettings && !this.touched) { this.settings = normalize(remoteSettings); }
+      this.cloud = 'cloud';
+      this.saveLocal();
+      onStoreLoaded();
+    } catch (e) {
+      console.warn('cloud store unavailable', e);
+      this.cloud = 'local';
+      renderStoreNote();
+    }
+  },
+};
+
+/* ---------- audio (Karplus-Strong pluck) ---------- */
+let actx = null;
+const bufCache = new Map();
+function audio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (actx.state === 'suspended') actx.resume().catch(() => {});
+  return actx;
+}
+function ksBuffer(ctx, freq) {
+  const sr = ctx.sampleRate, len = Math.floor(sr * 1.6);
+  const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0);
+  const N = Math.max(2, Math.round(sr / freq));
+  const ring = new Float32Array(N);
+  let prev = 0;
+  for (let i = 0; i < N; i++) { prev = 0.55 * prev + 0.45 * (Math.random() * 2 - 1); ring[i] = prev; }
+  let p = 0;
+  for (let i = 0; i < len; i++) {
+    const nx = (p + 1) % N, v = ring[p];
+    out[i] = v;
+    ring[p] = 0.997 * 0.5 * (v + ring[nx]);
+    p = nx;
+  }
+  const fade = Math.floor(sr * 0.08);
+  for (let i = len - fade; i < len; i++) out[i] *= (len - i) / fade;
+  return buf;
+}
+function pluck(m, delay = 0, gain = 0.5) {
+  if (!store.settings.sound) return;
+  const ctx = audio(); if (!ctx) return;
+  let b = bufCache.get(m);
+  if (!b) { b = ksBuffer(ctx, 440 * Math.pow(2, (m - 69) / 12)); bufCache.set(m, b); }
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  src.buffer = b; g.gain.value = gain;
+  src.connect(g).connect(ctx.destination);
+  src.start(ctx.currentTime + delay);
+}
+
+/* ---------- staff rendering ---------- */
+function drawStaff(el, o) {
+  el.innerHTML = '';
+  const width = Math.floor(el.clientWidth) || 300;
+  const groups = o.groups || [];
+  if (!window.Vex || !window.Vex.Flow) {
+    const fb = document.createElement('div');
+    fb.className = 'fallback';
+    fb.textContent = groups.length ? groups.map((g) => g.map((n) => nName(n) + n.o).join('  ')).join('   |   ') : (o.sig != null ? sigText(o.sig) : '');
+    el.appendChild(fb);
+    return;
+  }
+  const VF = Vex.Flow;
+  const sc = o.scale || 1.2;
+  const hiPos = o.hiPos ?? 38, loPos = o.loPos ?? 30;
+  const above = Math.max(o.minAbove ?? 2.5, (hiPos - 38) / 2 + 1.5);
+  const below = Math.max(o.minBelow ?? 3.5, (30 - loPos) / 2 + 1.5);
+  const H = (above + 4 + below) * 10;
+  const r = new VF.Renderer(el, VF.Renderer.Backends.SVG);
+  r.resize(width, Math.ceil(H * sc));
+  const ctx = r.getContext();
+  ctx.scale(sc, sc);
+  const lw = width / sc;
+  const st = new VF.Stave(0, 0, lw - 1, { space_above_staff_ln: above, space_below_staff_ln: below, left_bar: false, right_bar: false });
+  st.addClef('treble', 'default', '8vb');
+  if (o.sig != null) st.addKeySignature(vfKey(o.sig));
+  st.setContext(ctx).draw();
+  if (!groups.length) return;
+  const ka = keyAccs(o.sig || 0);
+  const notes = groups.map((g) => {
+    const sorted = g.slice().sort((a, b) => posOf(a) - posOf(b));
+    const sn = new VF.StaveNote({ clef: 'treble', keys: sorted.map((n) => LETTERS[n.l].toLowerCase() + '/' + n.o), duration: 'w' });
+    sorted.forEach((n, i) => { if (n.a !== ka[n.l]) sn.addModifier(new VF.Accidental(ACC_VF[n.a]), i); });
+    return sn;
+  });
+  const voice = new VF.Voice({ num_beats: 4 * notes.length, beat_value: 4 }).setMode(VF.Voice.Mode.SOFT).addTickables(notes);
+  const ksEnd = st.getNoteStartX();
+  // Single chord sits in the middle of the free space; accidentals extend to its left.
+  const startX = notes.length === 1 ? Math.max(ksEnd + 10, ksEnd + (lw - ksEnd) / 2 - 30) : ksEnd + 22;
+  st.setNoteStartX(startX);
+  const avail = Math.max(40, lw - startX - 24);
+  new VF.Formatter().joinVoices([voice]).format([voice], avail);
+  voice.draw(ctx, st);
+}
+
+/* ---------- fretboard ---------- */
+const INLAYS = [3, 5, 7, 9, 12, 15, 17, 19];
+const LS_SCROLL = 'fcd.scroll';
+let sharedScroll = 0, boardSeq = 0;
+try { sharedScroll = +localStorage.getItem(LS_SCROLL) || 0; } catch (e) { /* ignore */ }
+
+class Board {
+  constructor(host, opts) {
+    this.host = host; this.opts = opts || {};
+    this.markers = []; this.ghosts = []; this.degrees = null;
+    this.gid = 'wood' + (++boardSeq);
+    host.innerHTML = '<div class="fb-scroll"><svg class="fb-svg" xmlns="http://www.w3.org/2000/svg"></svg></div><div class="fb-mini"><div class="fb-mini-win"></div></div>';
+    this.scroller = host.querySelector('.fb-scroll');
+    this.svg = host.querySelector('svg');
+    this.mini = host.querySelector('.fb-mini');
+    this.win = host.querySelector('.fb-mini-win');
+    this.lastW = 0;
+    let t = 0;
+    this.scroller.addEventListener('scroll', () => {
+      this.updateMini();
+      clearTimeout(t);
+      t = setTimeout(() => {
+        sharedScroll = this.scroller.scrollLeft / (this.fretW || 1);
+        try { localStorage.setItem(LS_SCROLL, String(sharedScroll)); } catch (e) { /* ignore */ }
+      }, 250);
+    }, { passive: true });
+    if (this.opts.onTap) this.svg.addEventListener('click', (e) => this.onClick(e));
+    let dragging = false;
+    const seek = (e) => {
+      const r = this.mini.getBoundingClientRect();
+      const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      this.scroller.scrollLeft = frac * this.W - this.scroller.clientWidth / 2;
+    };
+    this.mini.addEventListener('pointerdown', (e) => { dragging = true; try { this.mini.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ } seek(e); });
+    this.mini.addEventListener('pointermove', (e) => { if (dragging) seek(e); });
+    const stop = () => { dragging = false; };
+    this.mini.addEventListener('pointerup', stop);
+    this.mini.addEventListener('pointercancel', stop);
+    if (window.ResizeObserver) new ResizeObserver(() => { if (this.host.clientWidth !== this.lastW) this.layout(); }).observe(host);
+  }
+  cx(f) { return f === 0 ? this.openW / 2 - 3 : this.openW + (f - 0.5) * this.fretW; }
+  sy(s) { return this.padT + s * this.gap; }
+  layout() {
+    const w = this.host.clientWidth;
+    if (!w) return;
+    this.lastW = w;
+    this.fretW = Math.round(Math.max(56, Math.min(86, (w - 44) / 5.1)));
+    this.openW = 44; this.gap = 35; this.padT = 22;
+    this.boardH = this.padT * 2 + 5 * this.gap;
+    this.H = this.boardH + 20;
+    this.W = this.openW + NFRETS * this.fretW + 8;
+    const { W, H, openW, fretW, padT, gap, boardH } = this;
+    let g = `<defs><linearGradient id="${this.gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--wood)"/><stop offset=".5" stop-color="var(--wood)" stop-opacity=".92"/><stop offset="1" stop-color="var(--wood-dark)"/></linearGradient></defs>`;
+    g += `<rect x="0" y="0" width="${openW}" height="${boardH}" fill="var(--wood-dark)"/>`;
+    g += `<rect x="${openW}" y="0" width="${W - openW}" height="${boardH}" fill="url(#${this.gid})"/>`;
+    const midY = padT + 2.5 * gap;
+    for (const f of INLAYS) {
+      const x = this.cx(f);
+      if (f === 12) {
+        g += `<circle cx="${x}" cy="${padT + 1.5 * gap}" r="6" fill="var(--pearl)" opacity=".45"/><circle cx="${x}" cy="${padT + 3.5 * gap}" r="6" fill="var(--pearl)" opacity=".45"/>`;
+      } else g += `<circle cx="${x}" cy="${midY}" r="6" fill="var(--pearl)" opacity=".45"/>`;
+    }
+    for (let f = 1; f <= NFRETS; f++) {
+      const x = openW + f * fretW;
+      g += `<rect x="${x - 1.5}" y="0" width="3" height="${boardH}" fill="var(--fret)"/>`;
+    }
+    g += `<rect x="${openW - 6}" y="0" width="7" height="${boardH}" fill="var(--nut)"/>`;
+    const widths = [1.1, 1.4, 1.8, 2.2, 2.7, 3.2];
+    for (let s = 0; s < 6; s++) {
+      const col = s >= 3 ? '#d6b47c' : '#e4e7eb';
+      g += `<rect x="0" y="${this.sy(s) - widths[s] / 2}" width="${W}" height="${widths[s]}" fill="${col}"/>`;
+    }
+    for (let f = 0; f <= NFRETS; f++) {
+      g += `<text class="fb-num${INLAYS.includes(f) ? ' dot' : ''}" x="${this.cx(f)}" y="${H - 5}">${f}</text>`;
+    }
+    g += '<g class="fb-marks"></g>';
+    this.svg.setAttribute('width', W);
+    this.svg.setAttribute('height', H);
+    this.svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    this.svg.innerHTML = g;
+    this.marksG = this.svg.querySelector('.fb-marks');
+    this.buildMini();
+    this.render();
+    this.scroller.scrollLeft = sharedScroll * fretW;
+    this.updateMini();
+  }
+  buildMini() {
+    this.mini.querySelectorAll('.inlay').forEach((n) => n.remove());
+    for (const f of INLAYS) {
+      const d = document.createElement('div');
+      d.className = 'fb-mini-dot inlay';
+      d.style.left = (this.cx(f) / this.W * 100) + '%';
+      this.mini.appendChild(d);
+    }
+  }
+  updateMini() {
+    if (!this.W) return;
+    const sw = this.scroller.clientWidth;
+    this.win.style.left = (this.scroller.scrollLeft / this.W * 100) + '%';
+    this.win.style.width = (Math.min(1, sw / this.W) * 100) + '%';
+  }
+  onClick(e) {
+    const r = this.svg.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    if (y < 0 || y > this.boardH) return;
+    const f = x < this.openW ? 0 : Math.min(NFRETS, Math.max(1, Math.ceil((x - this.openW) / this.fretW)));
+    const s = Math.min(5, Math.max(0, Math.round((y - this.padT) / this.gap)));
+    this.opts.onTap(s, f);
+  }
+  scrollToFrets(fmin, fmax) {
+    const sw = this.scroller.clientWidth;
+    const left = this.cx(fmin) - 40, right = this.cx(fmax) + 40;
+    const cur = this.scroller.scrollLeft;
+    if (left >= cur && right <= cur + sw) return;
+    const target = (left + right) / 2 - sw / 2;
+    this.scroller.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+  }
+  centerFret() { return (this.scroller.scrollLeft + this.scroller.clientWidth / 2 - this.openW) / this.fretW; }
+  render() {
+    if (!this.marksG) return;
+    let g = '';
+    if (this.degrees) {
+      for (let s = 0; s < 6; s++) for (let f = 0; f <= NFRETS; f++) {
+        const d = this.degrees[(OPEN[s] + f) % 12];
+        if (!d) continue;
+        const cls = d === 1 || d === 3 || d === 5 ? d : 'o';
+        const x = this.cx(f), y = this.sy(s);
+        g += `<circle class="dg dg-${cls}" cx="${x}" cy="${y}" r="${cls === 'o' ? 9.5 : 11}"/><text class="dg-t on-${cls}" x="${x}" y="${y + 0.5}">${d}</text>`;
+      }
+    }
+    for (const k of this.ghosts) g += `<circle class="mk-ghost" cx="${this.cx(k.f)}" cy="${this.sy(k.s)}" r="14"/>`;
+    for (const k of this.markers) {
+      const x = this.cx(k.f), y = this.sy(k.s);
+      g += `<circle class="mk mk-${k.state}" cx="${x}" cy="${y}" r="12"/>`;
+      if (k.state === 'bad') g += `<path class="mk-x" d="M${x - 4.5} ${y - 4.5}L${x + 4.5} ${y + 4.5}M${x + 4.5} ${y - 4.5}L${x - 4.5} ${y + 4.5}"/>`;
+    }
+    this.marksG.innerHTML = g;
+    this.mini.querySelectorAll('.m, .bad, .good, .ghost').forEach((n) => n.remove());
+    const add = (k, cls) => {
+      const d = document.createElement('div');
+      d.className = 'fb-mini-dot ' + cls;
+      d.style.left = (this.cx(k.f) / this.W * 100) + '%';
+      this.mini.appendChild(d);
+    };
+    this.ghosts.forEach((k) => add(k, 'ghost'));
+    this.markers.forEach((k) => add(k, k.state === 'sel' ? 'm' : k.state));
+  }
+}
+
+/* ---------- app state ---------- */
+let S = store.settings;
+let view = 'setup';
+let run = null;          // the run being prepared / played
+let lastResult = null;
+let sortBy = 'recent', sortDir = 1;
+let pvBoard = null, runBoard = null;
+let timerInt = 0, wakeLock = null;
+
+function show(v) {
+  view = v;
+  for (const id of ['setup', 'preview', 'run', 'results', 'history']) $('#view-' + id).hidden = id !== v;
+  $('#topbar').hidden = v === 'run';
+  $('#tabSetup').setAttribute('aria-current', v === 'setup' || v === 'results' || v === 'preview' ? 'page' : 'false');
+  $('#tabHistory').setAttribute('aria-current', v === 'history' ? 'page' : 'false');
+  if (v === 'setup') renderSetup();
+  if (v === 'history') renderHistory();
+  window.scrollTo(0, 0);
+}
+function setS(patch) {
+  S = normalize({ ...S, ...patch });
+  store.settings = S;
+  store.touched = true;
+  store.saveSettings();
+  renderSetup();
+}
+
+/* ---------- settings view ---------- */
+function buildSetup() {
+  const kg = $('#keyGrid');
+  const mk = (sig, wide) => {
+    const b = document.createElement('button');
+    b.className = 'keybtn' + (wide ? ' wide' : '');
+    b.dataset.sig = sig;
+    b.innerHTML = wide
+      ? `<span class="sig">${sigShort(sig)}</span><span class="names">${nName(majorTonic(sig))} major · ${nName(minorTonic(sig))} minor</span>`
+      : `<span class="sig">${sigShort(sig)}</span><span class="names">${nName(majorTonic(sig))} · ${nName(minorTonic(sig))}m</span>`;
+    b.title = `${nName(majorTonic(sig))} major / ${nName(minorTonic(sig))} minor`;
+    b.addEventListener('click', () => {
+      const has = S.sigs.includes(sig);
+      setS({ sigs: has ? S.sigs.filter((x) => x !== sig) : S.sigs.concat(sig) });
+    });
+    return b;
+  };
+  kg.appendChild(mk(0, true));
+  for (let i = 1; i <= 7; i++) { kg.appendChild(mk(-i)); kg.appendChild(mk(i)); }
+  const cl = $('#chordList');
+  const head = (t) => { const h = document.createElement('h3'); h.textContent = t; cl.appendChild(h); };
+  head('Triads');
+  QUALS.forEach((q, i) => {
+    if (i === 4) head('Seventh chords');
+    const b = document.createElement('button');
+    b.className = 'check'; b.dataset.q = q.id;
+    b.innerHTML = `<span class="box"></span><span>${q.name[0].toUpperCase() + q.name.slice(1).replace(' triad', '')}</span>`;
+    b.addEventListener('click', () => {
+      const has = S.quals.includes(q.id);
+      setS({ quals: has ? S.quals.filter((x) => x !== q.id) : S.quals.concat(q.id) });
+    });
+    cl.appendChild(b);
+  });
+  $('#lenDown').onclick = () => setS({ len: S.len - 1 });
+  $('#lenUp').onclick = () => setS({ len: S.len + 1 });
+  $('#keysAll').onclick = () => setS({ sigs: [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7] });
+  $('#keysNone').onclick = () => setS({ sigs: [] });
+  $('#tonSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ ton: b.dataset.ton }));
+  $('#rootSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ roots: b.dataset.roots }));
+  $('#swInv').onclick = () => setS({ inv: !S.inv });
+  $('#swOps').onclick = () => setS({ ops: !S.ops });
+  $('#swDbl').onclick = () => setS({ dbl: !S.dbl });
+  $('#swSound').onclick = () => { setS({ sound: !S.sound }); if (S.sound) pluck(64); };
+  $('#loUp').onclick = () => setS({ lo: Math.min(S.lo + 1, S.hi) });
+  $('#loDown').onclick = () => setS({ lo: S.lo - 1 });
+  $('#hiUp').onclick = () => setS({ hi: S.hi + 1 });
+  $('#hiDown').onclick = () => setS({ hi: Math.max(S.hi - 1, S.lo) });
+  $('#toPreview').onclick = () => prepareRun(S);
+}
+function whereOnNeck(p) {
+  const m = sounding(fromPos(p));
+  for (let s = 0; s < 6; s++) {
+    const f = m - OPEN[s];
+    if (f >= 0 && f <= NFRETS) return f === 0 ? `${ordinal(s + 1)} string open` : `${ordinal(s + 1)} string, fret ${f}`;
+  }
+  return 'off the neck';
+}
+let poolCache = { key: '', min: 0 };
+function poolSize(s) {
+  const key = JSON.stringify(canon(s));
+  if (poolCache.key === key) return poolCache.min;
+  let min = Infinity;
+  const sigs = s.roots === 'key' ? s.sigs : s.sigs.slice(0, 1);
+  for (const sig of sigs) min = Math.min(min, chordPool(s, sig).length);
+  poolCache = { key, min: sigs.length ? min : 0 };
+  return poolCache.min;
+}
+function renderSetup() {
+  $('#lenOut').textContent = S.len;
+  document.querySelectorAll('#keyGrid .keybtn').forEach((b) => b.setAttribute('aria-pressed', S.sigs.includes(+b.dataset.sig)));
+  document.querySelectorAll('#chordList .check').forEach((b) => b.setAttribute('aria-pressed', S.quals.includes(b.dataset.q)));
+  document.querySelectorAll('#tonSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.ton === S.ton));
+  document.querySelectorAll('#rootSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.roots === S.roots));
+  $('#swInv').setAttribute('aria-checked', S.inv);
+  $('#swOps').setAttribute('aria-checked', S.ops);
+  $('#swDbl').setAttribute('aria-checked', S.dbl);
+  $('#swSound').setAttribute('aria-checked', S.sound);
+  $('#keysHint').textContent = S.sigs.length === 1 ? 'Every run uses this key.' : 'Each run uses one key, picked at random from the ones you select.';
+  $('#loDown').disabled = S.lo <= POS_MIN; $('#hiUp').disabled = S.hi >= POS_MAX;
+  $('#loUp').disabled = S.lo >= S.hi; $('#hiDown').disabled = S.hi <= S.lo;
+  $('#rangeLabels').innerHTML = `<span>Lowest <b>${posName(S.lo)}</b><br>${whereOnNeck(S.lo)}</span><span>Highest <b>${posName(S.hi)}</b><br>${whereOnNeck(S.hi)}</span>`;
+  if (view === 'setup') drawStaff($('#rangeStaff'), { groups: [[fromPos(S.lo)], [fromPos(S.hi)]], loPos: Math.min(S.lo, 28), hiPos: Math.max(S.hi, 40), scale: 0.9, minBelow: 3 });
+  const note = $('#poolNote'), btn = $('#toPreview');
+  let problem = '';
+  if (!S.sigs.length) problem = 'Select at least one key signature.';
+  else if (!S.quals.length) problem = 'Select at least one chord type.';
+  else {
+    const n = poolSize(S);
+    if (!n) problem = S.roots === 'key' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
+    else note.textContent = `${n} different chord voicings fit these settings${S.roots === 'key' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
+  }
+  if (problem) { note.textContent = problem; note.className = 'note-warn'; } else note.className = 'hint';
+  btn.disabled = !!problem;
+}
+
+/* ---------- preview ---------- */
+function prepareRun(settings) {
+  const s = normalize(settings);
+  if (!s.sigs.length || !s.quals.length) { show('setup'); return; }
+  const sig = rnd(s.sigs);
+  const mode = s.ton === 'both' ? rnd(['major', 'minor']) : s.ton;
+  const pool = chordPool(s, sig);
+  if (!pool.length) { show('setup'); return; }
+  run = { s, sig, mode, pool, idx: 0, items: [], started: false };
+  show('preview');
+  $('#pvKey').textContent = keyLabel(sig, mode);
+  $('#pvMeta').textContent = `${sigText(sig)[0].toUpperCase() + sigText(sig).slice(1)} · ${s.len} chords`;
+  $('#pvSummary').textContent = setupSub(s);
+  drawStaff($('#pvStaff'), { sig, scale: 0.85, minAbove: 1.5, minBelow: 2.5 });
+  const tonic = mode === 'minor' ? minorTonic(sig) : majorTonic(sig);
+  const ka = keyAccs(sig);
+  const deg = {};
+  for (let d = 0; d < 7; d++) {
+    const l = (tonic.l + d) % 7;
+    deg[(LPC[l] + ka[l] + 12) % 12] = d + 1;
+  }
+  if (!pvBoard) pvBoard = new Board($('#pvBoard'), {});
+  pvBoard.degrees = deg; pvBoard.markers = []; pvBoard.ghosts = [];
+  pvBoard.layout();
+}
+
+/* ---------- run ---------- */
+const fmtTime = (ms) => {
+  const t = Math.max(0, ms) / 1000;
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+};
+function startRun() {
+  if (!run) return;
+  audio();
+  show('run');
+  if (!runBoard) runBoard = new Board($('#runBoard'), { onTap });
+  runBoard.degrees = null;
+  run.started = true;
+  run.t0 = performance.now();
+  run.idx = 0; run.items = [];
+  $('#runKey').textContent = keyLabel(run.sig, run.mode);
+  runBoard.layout();
+  nextChord();
+  clearInterval(timerInt);
+  timerInt = setInterval(() => { if (run && run.started && !run.done) $('#timer').textContent = fmtTime(performance.now() - run.t0); }, 100);
+  try { navigator.wakeLock && navigator.wakeLock.request('screen').then((w) => { wakeLock = w; }).catch(() => {}); } catch (e) { /* ignore */ }
+}
+function nextChord() {
+  const prev = run.items.length ? run.items[run.items.length - 1].c : null;
+  const c = pickChord(run.pool, prev);
+  run.cur = { c, tries: 0, revealed: false, target: c.notes.map(sounding) };
+  run.items.push(run.cur);
+  run.locked = false;
+  runBoard.markers = []; runBoard.ghosts = [];
+  runBoard.render();
+  $('#runProg').textContent = `${run.idx + 1} / ${run.s.len}`;
+  $('#progFill').style.width = (run.idx / run.s.len * 100) + '%';
+  drawStaff($('#runStaff'), { sig: run.sig, groups: [c.notes], loPos: Math.min(run.s.lo, 28), hiPos: Math.max(run.s.hi, 40), scale: 1.25 });
+  setFeedback(run.idx === 0 ? 'Tap the notes of this chord on the fretboard, then Check.' : '', '');
+}
+function setFeedback(text, cls) {
+  const fb = $('#feedback');
+  fb.textContent = text; fb.className = 'feedback' + (cls ? ' ' + cls : '');
+}
+function onTap(s, f) {
+  if (!run || run.locked) return;
+  const m = OPEN[s] + f;
+  const B = runBoard;
+  const i = B.markers.findIndex((k) => k.s === s && k.f === f);
+  if (i >= 0) B.markers.splice(i, 1);
+  else {
+    if (run.s.ops) { const j = B.markers.findIndex((k) => k.s === s); if (j >= 0) B.markers.splice(j, 1); }
+    B.markers.push({ s, f, m, state: 'sel' });
+    pluck(m);
+  }
+  B.render();
+}
+function check() {
+  if (!run || run.locked) return;
+  const B = runBoard, cur = run.cur;
+  if (!B.markers.length) { setFeedback('Tap some notes on the fretboard first.', ''); return; }
+  const seen = new Set();
+  let wrong = 0, dup = 0;
+  for (const k of B.markers) {
+    const inT = cur.target.includes(k.m);
+    if (inT && !seen.has(k.m)) { k.state = 'sel'; seen.add(k.m); }
+    else { k.state = 'bad'; if (inT) dup++; else wrong++; }
+  }
+  const missing = cur.target.filter((m) => !seen.has(m)).length;
+  if (!wrong && !dup && !missing) { success(); return; }
+  cur.tries++;
+  const parts = [];
+  if (wrong) parts.push(`${wrong} wrong note${wrong > 1 ? 's' : ''}`);
+  if (dup) parts.push(`${dup} repeated pitch${dup > 1 ? 'es' : ''}`);
+  if (missing) parts.push(`${missing} missing`);
+  setFeedback(`Not yet: ${parts.join(', ')}.`, 'bad');
+  B.render();
+  const fbEl = $('#feedback');
+  fbEl.classList.remove('shake'); void fbEl.offsetWidth; fbEl.classList.add('shake');
+  if (navigator.vibrate) { try { navigator.vibrate(40); } catch (e) { /* ignore */ } }
+}
+function success() {
+  const B = runBoard, cur = run.cur;
+  run.locked = true;
+  B.markers.forEach((k) => { k.state = 'good'; });
+  B.ghosts = [];
+  B.render();
+  cur.ok = cur.tries === 0 && !cur.revealed;
+  setFeedback(`✓ ${chordName(cur.c)}`, 'good');
+  cur.target.slice().sort((a, b) => a - b).forEach((m, i) => pluck(m, i * 0.04, 0.4));
+  run.idx++;
+  $('#progFill').style.width = (run.idx / run.s.len * 100) + '%';
+  setTimeout(() => {
+    if (!run || view !== 'run') return;
+    if (run.idx >= run.s.len) finishRun(); else nextChord();
+  }, 850);
+}
+function reveal() {
+  if (!run || run.locked) return;
+  const cur = run.cur, B = runBoard;
+  cur.revealed = true;
+  const center = B.centerFret();
+  const ps = cur.target;
+  let best = null, bestScore = Infinity;
+  for (const a of allAssignments(ps)) {
+    const fr = a.map((k) => k.f);
+    const fretted = fr.filter((f) => f > 0);
+    const span = fretted.length ? Math.max(...fretted) - Math.min(...fretted) : 0;
+    const mid = fretted.length ? (Math.max(...fretted) + Math.min(...fretted)) / 2 : 0;
+    const score = span * 2 + Math.abs(mid - center);
+    if (score < bestScore) { bestScore = score; best = a; }
+  }
+  if (!best) {
+    best = ps.map((m) => {
+      let pick = null, d = Infinity;
+      for (let s = 0; s < 6; s++) { const f = m - OPEN[s]; if (f >= 0 && f <= NFRETS && Math.abs(f - center) < d) { d = Math.abs(f - center); pick = { s, f, m }; } }
+      return pick;
+    }).filter(Boolean);
+  }
+  B.ghosts = best;
+  B.render();
+  const fs = best.map((k) => k.f);
+  B.scrollToFrets(Math.min(...fs), Math.max(...fs));
+  setFeedback(`${chordName(cur.c)}. Tap the dashed circles, then Check.`, '');
+}
+function quitRun() {
+  const b = $('#quitBtn');
+  if (!b.classList.contains('armed')) {
+    b.classList.add('armed'); b.textContent = 'Tap to quit';
+    setTimeout(() => { b.classList.remove('armed'); b.textContent = 'Quit'; }, 2500);
+    return;
+  }
+  b.classList.remove('armed'); b.textContent = 'Quit';
+  endRunTimers();
+  run = null;
+  show('setup');
+}
+function endRunTimers() {
+  clearInterval(timerInt);
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+function finishRun() {
+  run.done = true;
+  const ms = performance.now() - run.t0;
+  endRunTimers();
+  $('#timer').textContent = fmtTime(ms);
+  const firstTry = run.items.filter((x) => x.ok).length;
+  const score = firstTry / run.items.length;
+  // update stats for this setup
+  const id = setupId(run.s);
+  const now = Date.now();
+  const prev = store.setups[id];
+  const st = prev ? JSON.parse(JSON.stringify(prev)) : { id, settings: canon(run.s), runs: 0, wS: 0, wT: 0, w: 0, first: now, best: null, fastest: null, recent: [] };
+  st.settings = canon(run.s);
+  st.runs += 1;
+  st.wS = 0.9 * st.wS + score;
+  st.wT = 0.9 * st.wT + ms;
+  st.w = 0.9 * st.w + 1;
+  st.avgScore = st.wS / st.w;
+  st.avgTime = st.wT / st.w;
+  st.best = st.best == null ? score : Math.max(st.best, score);
+  st.fastest = st.fastest == null ? ms : Math.min(st.fastest, ms);
+  st.last = now;
+  st.recent = [{ at: now, score, ms, key: keyLabel(run.sig, run.mode) }].concat(st.recent || []).slice(0, 20);
+  store.saveSetup(st);
+  lastResult = { s: run.s, score, ms, st, items: run.items, key: keyLabel(run.sig, run.mode) };
+  showResults();
+}
+function showResults() {
+  const r = lastResult;
+  show('results');
+  $('#resHead').textContent = `Run complete · ${r.key}`;
+  $('#resAcc').textContent = Math.round(r.score * 100) + '%';
+  $('#resTime').textContent = fmtTime(r.ms);
+  $('#resCompare').innerHTML = r.st.runs > 1
+    ? `Average for this setup over ${r.st.runs} runs: <b>${Math.round(r.st.avgScore * 100)}%</b> in <b>${fmtTime(r.st.avgTime)}</b>.`
+    : 'First run with this setup. It now appears in History.';
+  const ol = $('#resList'); ol.innerHTML = '';
+  r.items.forEach((it) => {
+    const li = document.createElement('li');
+    const tries = it.revealed ? 'answer shown' : it.tries ? `${it.tries + 1} tries` : '';
+    li.innerHTML = `<span class="mark ${it.ok ? 'ok' : 'miss'}">${it.ok ? '✓' : '✗'}</span><span></span><span class="tries">${tries}</span>`;
+    li.children[1].textContent = chordName(it.c);
+    ol.appendChild(li);
+  });
+}
+
+/* ---------- history ---------- */
+const relTime = (t) => {
+  const d = (Date.now() - t) / 1000;
+  if (d < 60) return 'just now';
+  if (d < 3600) return Math.floor(d / 60) + ' min ago';
+  if (d < 86400) return Math.floor(d / 3600) + ' h ago';
+  if (d < 86400 * 14) return Math.floor(d / 86400) + ' d ago';
+  return new Date(t).toLocaleDateString();
+};
+function renderStoreNote() {
+  const base = 'Averages weight each new run at 10%; older runs fade out gradually.';
+  const where = store.cloud === 'cloud' ? ' Saved to your account.' : store.cloud === 'error' ? ' Could not save to your account; saved on this device.' : store.cloud === 'local' ? ' Saved on this device.' : '';
+  $('#storeNote').textContent = base + where;
+}
+function renderHistory() {
+  renderStoreNote();
+  document.querySelectorAll('#sortSeg button').forEach((b) => {
+    const on = b.dataset.sort === sortBy;
+    b.setAttribute('aria-pressed', on);
+    b.textContent = b.dataset.sort[0].toUpperCase() + b.dataset.sort.slice(1) + (on ? (sortDir > 0 ? ' ↓' : ' ↑') : '');
+  });
+  const list = Object.values(store.setups).filter((x) => x && x.settings);
+  const val = { recent: (x) => -(x.last || 0), score: (x) => -(x.avgScore || 0), time: (x) => x.avgTime || 0, runs: (x) => -(x.runs || 0) }[sortBy];
+  list.sort((a, b) => (val(a) - val(b)) * sortDir || (b.last || 0) - (a.last || 0));
+  const ul = $('#histList'); ul.innerHTML = '';
+  $('#histEmpty').hidden = list.length > 0;
+  for (const st of list) {
+    const s = normalize(st.settings);
+    const li = document.createElement('li');
+    li.className = 'hitem';
+    li.innerHTML = `<div><div class="htitle"></div><div class="hsub"></div></div>
+      <div class="hstats">
+        <div class="hstat${sortBy === 'score' ? ' sorted' : ''}"><b>${Math.round((st.avgScore || 0) * 100)}%</b><span>avg score</span></div>
+        <div class="hstat${sortBy === 'time' ? ' sorted' : ''}"><b>${fmtTime(st.avgTime || 0)}</b><span>avg time</span></div>
+        <div class="hstat${sortBy === 'runs' ? ' sorted' : ''}"><b>${st.runs || 0}</b><span>runs</span></div>
+        <div class="hstat${sortBy === 'recent' ? ' sorted' : ''}"><b style="font-size:13px">${relTime(st.last || 0)}</b><span>last run</span></div>
+      </div>
+      <div class="hbtns"><button class="rm">Remove</button><button class="primary">Play</button></div>`;
+    li.querySelector('.htitle').textContent = setupTitle(s);
+    li.querySelector('.hsub').textContent = setupSub(s);
+    li.querySelector('.primary').onclick = () => {
+      S = normalize({ ...canon(s), sound: S.sound });
+      store.settings = S; store.touched = true; store.saveSettings();
+      prepareRun(S);
+    };
+    const rm = li.querySelector('.rm');
+    rm.onclick = () => {
+      if (!rm.classList.contains('armed')) {
+        rm.classList.add('armed'); rm.textContent = 'Tap again to remove';
+        setTimeout(() => { rm.classList.remove('armed'); rm.textContent = 'Remove'; }, 3000);
+        return;
+      }
+      store.removeSetup(st.id);
+      renderHistory();
+    };
+    ul.appendChild(li);
+  }
+}
+
+/* ---------- wiring ---------- */
+function onStoreLoaded() {
+  S = store.settings;
+  if (view === 'setup') renderSetup();
+  if (view === 'history') renderHistory();
+}
+function start(hotData) {
+  store.loadLocal();
+  if (hotData && hotData.settings) store.settings = normalize(hotData.settings);
+  S = store.settings;
+  buildSetup();
+  document.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => show(b.dataset.go));
+  $('#pvBack').onclick = () => show('setup');
+  $('#startBtn').onclick = startRun;
+  $('#checkBtn').onclick = check;
+  $('#clearBtn').onclick = () => { if (run && !run.locked) { runBoard.markers = []; runBoard.render(); setFeedback('', ''); } };
+  $('#revealBtn').onclick = reveal;
+  $('#quitBtn').onclick = quitRun;
+  $('#resAgain').onclick = () => prepareRun(lastResult ? lastResult.s : S);
+  $('#resSettings').onclick = () => show('setup');
+  document.querySelectorAll('#sortSeg button').forEach((b) => b.onclick = () => {
+    if (sortBy === b.dataset.sort) sortDir = -sortDir; else { sortBy = b.dataset.sort; sortDir = 1; }
+    renderHistory();
+  });
+  let rt = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => {
+      if (view === 'setup') renderSetup();
+      if (view === 'run' && run && run.cur) drawStaff($('#runStaff'), { sig: run.sig, groups: [run.cur.c.notes], loPos: Math.min(run.s.lo, 28), hiPos: Math.max(run.s.hi, 40), scale: 1.25 });
+    }, 150);
+  });
+  show(hotData && hotData.view === 'history' ? 'history' : 'setup');
+  store.initCloud();
+  // test hook
+  window.__fcd = { chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
+}
+if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
+  try { window.claude.hot.snapshot(() => ({ settings: S, view: view === 'history' ? 'history' : 'setup' })); } catch (e) { /* ignore */ }
+}
+const boot = () => {
+  if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(start);
+  else start((window.claude && window.claude.hot && window.claude.hot.data) || {});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
