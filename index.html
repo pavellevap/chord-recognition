@@ -557,21 +557,27 @@ function spellMidi(m, tone) {          // sounding midi + spelled chord tone -> 
 }
 /* Tie chords to the key: with fit "near", every note of a chord comes from the
    run's key signature or from one of its neighbours (one sharp/flat more or less);
-   "key" allows only the run's key; "any" has no restriction. Returns the key the
-   chord was taken from (the run's own key first), or undefined if it does not fit. */
+   "key" allows only the run's key; "any" has no restriction. A fully diminished
+   7th only needs three of its four notes in the key (e.g. B D F A♭ in C major).
+   Returns the key the chord was taken from (the run's own key first), or
+   undefined if it does not fit. */
 function sourceSigs(fit, sig) {
   if (fit === 'any') return null;
   if (fit === 'key') return [sig];
   return [sig, sig - 1, sig + 1].filter((k) => k >= -7 && k <= 7);
 }
-function chordSource(tones, srcs) {
+function chordSource(tones, srcs, q) {
   if (!srcs) return null;
+  const need = q.id === 'dim7' ? tones.length - 1 : tones.length;
   for (const k of srcs) {
     const ka = keyAccs(k);
-    if (tones.every((t) => t.a === ka[t.l])) return k;
+    if (tones.filter((t) => t.a === ka[t.l]).length >= need) return k;
   }
   return undefined;
 }
+// Double sharps/flats: a user choice under "Any"; when tied to a key they only
+// occur as the out-of-key note of a diminished 7th (e.g. B𝄫 in D♭ major), so allow them.
+const maxAcc = (S) => (S.dbl || S.fit !== 'any' ? 2 : 1);
 function chordPool(S, sig) {
   return S.ops ? voicingPool(S, sig) : closePool(S, sig);
 }
@@ -583,8 +589,8 @@ function voicingPool(S, sig) {
     for (const q of QUALS) {
       if (!S.quals.includes(q.id)) continue;
       const tones = q.iv.map((iv) => addIv({ l, a, o: 4 }, iv));
-      if (tones.some((t) => Math.abs(t.a) > (S.dbl ? 2 : 1))) continue;
-      const from = chordSource(tones, srcs);
+      if (tones.some((t) => Math.abs(t.a) > maxAcc(S))) continue;
+      const from = chordSource(tones, srcs, q);
       if (from === undefined) continue;
       for (const v of enumVoicings(rootPc, q, S.span, S.dup)) {
         if (!S.inv && v.bass !== 0) continue;
@@ -603,12 +609,12 @@ function closePool(S, sig) {
   for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
     for (const q of QUALS) {
       if (!S.quals.includes(q.id)) continue;
-      const from = chordSource(q.iv.map((iv) => addIv({ l, a, o: 4 }, iv)), srcs);
+      const from = chordSource(q.iv.map((iv) => addIv({ l, a, o: 4 }, iv)), srcs, q);
       if (from === undefined) continue;
       const nInv = S.inv ? q.iv.length : 1;
       for (let inv = 0; inv < nInv; inv++) {
         const base = buildChord({ l, a, o: 0 }, q, inv);
-        if (base.some((t) => Math.abs(t.a) > (S.dbl ? 2 : 1))) continue;
+        if (base.some((t) => Math.abs(t.a) > maxAcc(S))) continue;
         for (let sh = 1; sh <= 8; sh++) {
           const notes = base.map((t) => ({ ...t, o: t.o + sh }));
           if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
