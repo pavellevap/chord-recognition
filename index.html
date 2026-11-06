@@ -74,6 +74,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .row > .lbl { min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.stack .sub { display: block; color: var(--muted); font-size: 13px; }
 .row .sub { display: block; color: var(--muted); font-size: 13px; }
 .stepper { flex: none; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .stepper button { width: 42px; height: 38px; border: 0; background: var(--surface-2); font-size: 20px; line-height: 1; }
@@ -257,7 +259,12 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 
     <div class="group">
       <h2>Chords</h2>
+      <div class="stack">
+        <span class="lbl">Chord notes<span class="sub" id="fitSub"></span></span>
+        <div class="seg" id="fitSeg" role="group" aria-label="Chord notes"><button data-fit="near">Key + neighbours</button><button data-fit="key">Key only</button><button data-fit="any">Any</button></div>
+      </div>
       <div class="checklist" id="chordList"></div>
+      <p class="hint" id="qualNote" hidden></p>
       <div class="row">
         <span class="lbl">Inversions<span class="sub">Bass note can be the 3rd, 5th or 7th</span></span>
         <button class="switch" id="swInv" role="switch" aria-checked="true" aria-label="Inversions"></button>
@@ -278,10 +285,6 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     <div class="group">
       <h2>More options</h2>
       <div class="row">
-        <span class="lbl">Chord roots</span>
-        <div class="seg" id="rootSeg" role="group" aria-label="Chord roots"><button data-roots="any">Any</button><button data-roots="key">In key only</button></div>
-      </div>
-      <div class="row">
         <span class="lbl">Guitar voicings<span class="sub" id="opsSub"></span></span>
         <button class="switch" id="swOps" role="switch" aria-checked="true" aria-label="Guitar voicings"></button>
       </div>
@@ -297,7 +300,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         <span class="lbl">Doubled notes<span class="sub">Also full shapes like barre chords, where chord tones repeat in other octaves</span></span>
         <button class="switch" id="swDup" role="switch" aria-checked="false" aria-label="Doubled notes"></button>
       </div>
-      <div class="row">
+      <div class="row" id="rowDbl">
         <span class="lbl">Double sharps and flats<span class="sub">Allow spellings like B𝄫 or F𝄪</span></span>
         <button class="switch" id="swDbl" role="switch" aria-checked="false" aria-label="Double sharps and flats"></button>
       </div>
@@ -325,6 +328,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         <div class="eyebrow">Key for this run</div>
         <h1 class="keyname" id="pvKey">C major</h1>
         <div class="keymeta" id="pvMeta"></div>
+        <div class="keymeta" id="pvFrom"></div>
       </div>
     </div>
     <div class="legend">
@@ -551,25 +555,43 @@ function spellMidi(m, tone) {          // sounding midi + spelled chord tone -> 
   const w = m + 12;
   return { l: tone.l, a: tone.a, o: (w - LPC[tone.l] - tone.a) / 12 - 1 };
 }
+/* Tie chords to the key: with fit "near", every note of a chord comes from the
+   run's key signature or from one of its neighbours (one sharp/flat more or less);
+   "key" allows only the run's key; "any" has no restriction. Returns the key the
+   chord was taken from (the run's own key first), or undefined if it does not fit. */
+function sourceSigs(fit, sig) {
+  if (fit === 'any') return null;
+  if (fit === 'key') return [sig];
+  return [sig, sig - 1, sig + 1].filter((k) => k >= -7 && k <= 7);
+}
+function chordSource(tones, srcs) {
+  if (!srcs) return null;
+  for (const k of srcs) {
+    const ka = keyAccs(k);
+    if (tones.every((t) => t.a === ka[t.l])) return k;
+  }
+  return undefined;
+}
 function chordPool(S, sig) {
   return S.ops ? voicingPool(S, sig) : closePool(S, sig);
 }
 function voicingPool(S, sig) {
   const out = [];
-  const ka = keyAccs(sig);
+  const srcs = sourceSigs(S.fit, sig);
   for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
-    if (S.roots === 'key' && a !== ka[l]) continue;
     const rootPc = (LPC[l] + a + 12) % 12;
     for (const q of QUALS) {
       if (!S.quals.includes(q.id)) continue;
       const tones = q.iv.map((iv) => addIv({ l, a, o: 4 }, iv));
       if (tones.some((t) => Math.abs(t.a) > (S.dbl ? 2 : 1))) continue;
+      const from = chordSource(tones, srcs);
+      if (from === undefined) continue;
       for (const v of enumVoicings(rootPc, q, S.span, S.dup)) {
         if (!S.inv && v.bass !== 0) continue;
         const notes = v.midis.map((m) => spellMidi(m, tones[q.iv.findIndex(([, semi]) => (rootPc + semi) % 12 === m % 12)]));
         if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
         const close = notes.length === q.iv.length && v.midis[v.midis.length - 1] - v.midis[0] < 12;
-        out.push({ root: { l, a }, q, inv: v.bass, notes, fingerings: v.fingerings, size: notes.length, close });
+        out.push({ root: { l, a }, q, inv: v.bass, notes, fingerings: v.fingerings, size: notes.length, close, from });
       }
     }
   }
@@ -577,11 +599,12 @@ function voicingPool(S, sig) {
 }
 function closePool(S, sig) {
   const out = [];
-  const ka = keyAccs(sig);
+  const srcs = sourceSigs(S.fit, sig);
   for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
-    if (S.roots === 'key' && a !== ka[l]) continue;
     for (const q of QUALS) {
       if (!S.quals.includes(q.id)) continue;
+      const from = chordSource(q.iv.map((iv) => addIv({ l, a, o: 4 }, iv)), srcs);
+      if (from === undefined) continue;
       const nInv = S.inv ? q.iv.length : 1;
       for (let inv = 0; inv < nInv; inv++) {
         const base = buildChord({ l, a, o: 0 }, q, inv);
@@ -591,7 +614,7 @@ function closePool(S, sig) {
           if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
           const snd = notes.map(sounding);
           if (snd.some((m) => m < SOUND_LO || m > SOUND_HI)) continue;
-          out.push({ root: { l, a }, q, inv, notes, size: notes.length, close: true });
+          out.push({ root: { l, a }, q, inv, notes, size: notes.length, close: true, from });
         }
       }
     }
@@ -611,13 +634,14 @@ function pickChord(pool, prev) {
     if (!prev || tries > 8 || chordSig(c) !== chordSig(prev)) return c;
   }
 }
-const chordName = (c) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c.inv]}${c.size > c.q.iv.length ? ', doubled' : c.close ? '' : ', open voicing'}`;
+const chordName = (c, sig, mode) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c.inv]}${c.size > c.q.iv.length ? ', doubled' : c.close ? '' : ', open voicing'}`
+  + (c.from != null && sig != null && c.from !== sig ? ` · from ${keyLabel(c.from, mode)}` : '');
 
 /* ---------- settings ---------- */
 const DEFAULTS = {
   len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
   quals: QUALS.filter((q) => q.def).map((q) => q.id),
-  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, roots: 'any', ops: true, span: 4, dup: false, dbl: false, sound: true,
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', ops: true, span: 4, dup: false, dbl: false, sound: true,
 };
 function normalize(s) {
   const d = { ...DEFAULTS, ...(s || {}) };
@@ -627,14 +651,15 @@ function normalize(s) {
   d.quals = QUALS.map((q) => q.id).filter((id) => (Array.isArray(d.quals) ? d.quals : DEFAULTS.quals).includes(id));
   d.lo = Math.min(POS_MAX, Math.max(POS_MIN, +d.lo || POS_MIN));
   d.hi = Math.min(POS_MAX, Math.max(d.lo, +d.hi || DEFAULTS.hi));
-  if (!['any', 'key'].includes(d.roots)) d.roots = 'any';
+  if (!['near', 'key', 'any'].includes(d.fit)) d.fit = 'near';
+  delete d.roots;
   d.span = Math.min(6, Math.max(2, Math.round(+d.span || 4)));
   d.inv = !!d.inv; d.ops = !!d.ops; d.dup = !!d.dup; d.dbl = !!d.dbl; d.sound = d.sound !== false;
   return d;
 }
 // What identifies a "setup" in history (sound is a preference, not part of the drill).
 function canon(s) {
-  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, roots: s.roots, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl };
+  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, fit: s.fit, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl };
 }
 function setupId(s) {
   const str = JSON.stringify(canon(s));
@@ -671,7 +696,7 @@ function setupTitle(s) { return `${s.len} chords · ${keysSummary(s)}`; }
 function setupSub(s) {
   return [chordsSummary(s), s.inv ? 'inversions' : 'root position', `${posName(s.lo)}–${posName(s.hi)}`,
     s.ops ? `guitar voicings, stretch ≤ ${s.span}` : 'close position', s.ops && s.dup ? 'doubled notes' : null,
-    s.roots === 'key' ? 'roots in key' : 'any root', s.dbl ? 'double ♯/♭' : null]
+    { near: 'key + neighbours', key: 'key only', any: 'any chords' }[s.fit], s.fit === 'any' && s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
 }
 
@@ -1052,7 +1077,7 @@ function buildSetup() {
   $('#keysAll').onclick = () => setS({ sigs: [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7] });
   $('#keysNone').onclick = () => setS({ sigs: [] });
   $('#tonSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ ton: b.dataset.ton }));
-  $('#rootSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ roots: b.dataset.roots }));
+  $('#fitSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ fit: b.dataset.fit }));
   $('#swInv').onclick = () => setS({ inv: !S.inv });
   $('#swOps').onclick = () => setS({ ops: !S.ops });
   $('#swDup').onclick = () => setS({ dup: !S.dup });
@@ -1074,22 +1099,36 @@ function whereOnNeck(p) {
   }
   return 'off the neck';
 }
-let poolCache = { key: '', min: 0 };
-function poolSize(s) {
+let poolCache = { key: '', min: 0, quals: new Set() };
+function poolStats(s) {
   const key = JSON.stringify(canon(s));
-  if (poolCache.key === key) return poolCache.min;
+  if (poolCache.key === key) return poolCache;
   let min = Infinity;
-  const sigs = s.roots === 'key' ? s.sigs : s.sigs.slice(0, 1);
-  for (const sig of sigs) min = Math.min(min, chordPool(s, sig).length);
-  poolCache = { key, min: sigs.length ? min : 0 };
-  return poolCache.min;
+  const quals = new Set();
+  const sigs = s.fit !== 'any' ? s.sigs : s.sigs.slice(0, 1);
+  for (const sig of sigs) {
+    const pool = chordPool(s, sig);
+    min = Math.min(min, pool.length);
+    pool.forEach((c) => quals.add(c.q.id));
+  }
+  poolCache = { key, min: sigs.length ? min : 0, quals };
+  return poolCache;
 }
 function renderSetup() {
   $('#lenOut').textContent = S.len;
   document.querySelectorAll('#keyGrid .keybtn').forEach((b) => b.setAttribute('aria-pressed', S.sigs.includes(+b.dataset.sig)));
   document.querySelectorAll('#chordList .check').forEach((b) => b.setAttribute('aria-pressed', S.quals.includes(b.dataset.q)));
   document.querySelectorAll('#tonSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.ton === S.ton));
-  document.querySelectorAll('#rootSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.roots === S.roots));
+  document.querySelectorAll('#fitSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fit === S.fit));
+  const ex = S.sigs.includes(0) ? 0 : (S.sigs[0] ?? 0);
+  const exMode = S.ton === 'minor' ? 'minor' : 'major';
+  const exNb = [ex - 1, ex + 1].filter((k) => k >= -7 && k <= 7).map((k) => keyLabel(k, exMode));
+  $('#fitSub').textContent = {
+    near: `All notes of a chord come from the run's key or a key one sharp or flat away (in ${keyLabel(ex, exMode)}: also ${exNb.join(' or ')}).`,
+    key: `All notes of a chord come from the run's key (in ${keyLabel(ex, exMode)}: only its scale notes).`,
+    any: 'Chords on any root, with any accidentals.',
+  }[S.fit];
+  $('#rowDbl').hidden = S.fit !== 'any';
   $('#swInv').setAttribute('aria-checked', S.inv);
   $('#swOps').setAttribute('aria-checked', S.ops);
   $('#opsSub').textContent = S.ops
@@ -1112,9 +1151,16 @@ function renderSetup() {
   if (!S.sigs.length) problem = 'Select at least one key signature.';
   else if (!S.quals.length) problem = 'Select at least one chord type.';
   else {
-    const n = poolSize(S);
-    if (!n) problem = S.roots === 'key' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
-    else note.textContent = `${n} different chord voicings fit these settings${S.roots === 'key' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
+    const st = poolStats(S), n = st.min;
+    if (!n) problem = S.fit !== 'any' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
+    else note.textContent = `${n} different chord voicings fit these settings${S.fit !== 'any' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
+  }
+  const qn = $('#qualNote');
+  const never = S.sigs.length && S.fit !== 'any' ? S.quals.filter((id) => !poolStats(S).quals.has(id)) : [];
+  qn.hidden = !never.length;
+  if (never.length) {
+    const names = never.map((id) => { const nm = QBY[id].name; return nm[0].toUpperCase() + nm.slice(1); });
+    qn.textContent = `${names.join(', ')} ${never.length > 1 ? 'never fit' : 'never fits'} these keys, so ${never.length > 1 ? 'they won’t' : 'it won’t'} come up. Choose Any under Chord notes to include ${never.length > 1 ? 'them' : 'it'}.`;
   }
   if (problem) { note.textContent = problem; note.className = 'note-warn'; } else note.className = 'hint';
   btn.disabled = !!problem;
@@ -1133,6 +1179,8 @@ function prepareRun(settings) {
   $('#pvKey').textContent = keyLabel(sig, mode);
   $('#pvMeta').textContent = `${sigText(sig)[0].toUpperCase() + sigText(sig).slice(1)} · ${s.len} chords`;
   $('#pvSummary').textContent = setupSub(s);
+  const nb = [sig - 1, sig + 1].filter((k) => k >= -7 && k <= 7).map((k) => keyLabel(k, mode));
+  $('#pvFrom').textContent = s.fit === 'near' ? `Chords also borrowed from ${nb.join(' and ')}` : s.fit === 'key' ? 'All chords from this key' : 'Chords on any root';
   drawStaff($('#pvStaff'), { sig, scale: 0.85, minAbove: 1.5, minBelow: 2.5 });
   const tonic = mode === 'minor' ? minorTonic(sig) : majorTonic(sig);
   const ka = keyAccs(sig);
@@ -1229,7 +1277,7 @@ function success() {
   B.ghosts = [];
   B.render();
   cur.ok = cur.tries === 0 && !cur.revealed;
-  setFeedback(`✓ ${chordName(cur.c)}`, 'good');
+  setFeedback(`✓ ${chordName(cur.c, run.sig, run.mode)}`, 'good');
   cur.target.slice().sort((a, b) => a - b).forEach((m, i) => pluck(m, i * 0.04, 0.4));
   run.idx++;
   $('#progFill').style.width = (run.idx / run.s.len * 100) + '%';
@@ -1264,7 +1312,7 @@ function reveal() {
   B.render();
   const fs = best.map((k) => k.f);
   B.scrollToFrets(Math.min(...fs), Math.max(...fs));
-  setFeedback(`${chordName(cur.c)}. Tap the dashed circles, then Check.`, '');
+  setFeedback(`${chordName(cur.c, run.sig, run.mode)}. Tap the dashed circles, then Check.`, '');
 }
 function quitRun() {
   const b = $('#quitBtn');
@@ -1306,7 +1354,7 @@ function finishRun() {
   st.last = now;
   st.recent = [{ at: now, score, ms, key: keyLabel(run.sig, run.mode) }].concat(st.recent || []).slice(0, 20);
   store.saveSetup(st);
-  lastResult = { s: run.s, score, ms, st, items: run.items, key: keyLabel(run.sig, run.mode) };
+  lastResult = { s: run.s, score, ms, st, items: run.items, key: keyLabel(run.sig, run.mode), sig: run.sig, mode: run.mode };
   showResults();
 }
 function showResults() {
@@ -1323,7 +1371,7 @@ function showResults() {
     const li = document.createElement('li');
     const tries = it.revealed ? 'answer shown' : it.tries ? `${it.tries + 1} tries` : '';
     li.innerHTML = `<span class="mark ${it.ok ? 'ok' : 'miss'}">${it.ok ? '✓' : '✗'}</span><span></span><span class="tries">${tries}</span>`;
-    li.children[1].textContent = chordName(it.c);
+    li.children[1].textContent = chordName(it.c, r.sig, r.mode);
     ol.appendChild(li);
   });
 }

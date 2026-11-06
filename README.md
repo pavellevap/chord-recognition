@@ -13,7 +13,10 @@ and you find its exact pitches on a 19-fret guitar neck.
 
 - **Settings** (modelled on musictheory.net's chord exercise): chords per run, key signatures
   (one picked at random per run), major/minor/both, chord types, inversions, written-pitch range,
-  roots any/in key, guitar voicings (with max stretch and doubled notes), double accidentals, sound.
+  chord notes (key + neighbours / key only / any), guitar voicings (with max stretch and doubled notes), double accidentals, sound.
+- **Chord notes**: with "key + neighbours" every note of a chord comes from the run's key signature
+  or one a sharp/flat away (in C: C, F or G major); chords taken from a neighbour are labelled
+  "from F major" etc. after you solve them.
 - **Guitar voicings** are found by searching the neck: one note per string, every chord tone present,
   all positions (open strings count as fret 0) within the max stretch. With doubled notes on,
   shapes may repeat chord tones on adjacent strings and must fit four fingers (a barre counts as one).
