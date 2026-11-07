@@ -74,6 +74,9 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .row > .lbl { min-width: 0; }
+.shapelist { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.shapelist .check b { font-family: var(--font-display); font-weight: 400; font-size: 17px; min-width: 18px; }
+.shapelist .check span:last-child { color: var(--muted); font-size: 13px; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .stack .sub { display: block; color: var(--muted); font-size: 13px; }
 .row .sub { display: block; color: var(--muted); font-size: 13px; }
@@ -106,6 +109,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .switch { position: relative; flex: none; width: 50px; height: 30px; border-radius: 999px; border: 0; background: var(--line); transition: background .15s; }
 .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: transform .15s; }
 .switch[aria-checked="true"] { background: var(--good); }
+.switch[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .switch[aria-checked="true"]::after { transform: translateX(20px); }
 
 .rangebox { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
@@ -134,6 +138,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
 .keyname { font-family: var(--font-display); font-size: 30px; line-height: 1.1; font-weight: 400; }
 .keymeta { color: var(--muted); font-size: 14px; }
+.keyshape { font-weight: 700; font-size: 15px; margin-top: 4px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); align-items: center; }
 .legend i { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 11px; font-weight: 700; color: #fff; margin-right: 5px; vertical-align: middle; }
 .lg-1 { background: var(--root); } .lg-3 { background: var(--third); color: #24160e !important; } .lg-5 { background: var(--fifth); }
@@ -148,6 +153,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .fb-svg { display: block; touch-action: manipulation; }
 .fb-num { fill: var(--muted); font: 500 11px var(--font-mono); text-anchor: middle; }
 .fb-num.dot { fill: var(--ink); font-weight: 700; }
+.fb-band { fill: var(--pearl); opacity: .1; pointer-events: none; }
 .mk { transition: transform .12s; }
 .mk-sel { fill: var(--pearl); stroke: #1a1008; stroke-width: 2; }
 .mk-bad { fill: var(--bad); stroke: #fff; stroke-width: 2; }
@@ -258,6 +264,13 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
     </div>
 
     <div class="group">
+      <h2>Position</h2>
+      <div class="seg" id="posSeg" role="group" aria-label="Position"><button data-pos="neck">Whole neck</button><button data-pos="caged">CAGED shape</button></div>
+      <p class="hint" id="posHint"></p>
+      <div class="shapelist" id="shapeList"></div>
+    </div>
+
+    <div class="group">
       <h2>Chords</h2>
       <div class="stack">
         <span class="lbl">Chord notes<span class="sub" id="fitSub"></span></span>
@@ -329,6 +342,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         <h1 class="keyname" id="pvKey">C major</h1>
         <div class="keymeta" id="pvMeta"></div>
         <div class="keymeta" id="pvFrom"></div>
+        <div class="keyshape" id="pvShape" hidden></div>
       </div>
     </div>
     <div class="legend">
@@ -499,8 +513,9 @@ function allAssignments(ps) {
    may repeat (no identical pitches), strings must be adjacent (a strummable
    shape) and it must fit four fingers, counting a barre at the lowest fret as one. */
 const voicingCache = new Map();
-function enumVoicings(rootPc, q, span, dup) {
-  const ck = `${rootPc}|${q.id}|${span}|${dup}`;
+const ALL_FRETS = Array.from({ length: NFRETS + 1 }, (_, i) => i);
+function enumVoicings(rootPc, q, span, dup, region) {
+  const ck = `${rootPc}|${q.id}|${span}|${dup}|${region ? region.key : 'neck'}`;
   if (voicingCache.has(ck)) return voicingCache.get(ck);
   const pcs = q.iv.map(([, semi]) => (rootPc + semi) % 12);
   const toneOf = {}; pcs.forEach((pc, i) => { toneOf[pc] = i; });
@@ -533,9 +548,10 @@ function enumVoicings(rootPc, q, span, dup) {
     if (s === 6) { leaf(); return; }
     dfs(s + 1, lo, hi);
     if (cur.length >= maxNotes) return;
-    for (let f = 0; f <= NFRETS; f++) {
+    for (const f of (region ? region.frets[s] : ALL_FRETS)) {
       const m = OPEN[s] + f, t = toneOf[m % 12];
       if (t === undefined) continue;
+      if (region && !region.ok(s, f, m)) continue;
       if (!dup && counts[t]) continue;
       const nlo = Math.min(lo, f), nhi = Math.max(hi, f);
       if (nhi - nlo > span) continue;
@@ -578,10 +594,10 @@ function chordSource(tones, srcs, q) {
 // Double sharps/flats: a user choice under "Any"; when tied to a key they only
 // occur as the out-of-key note of a diminished 7th (e.g. B𝄫 in D♭ major), so allow them.
 const maxAcc = (S) => (S.dbl || S.fit !== 'any' ? 2 : 1);
-function chordPool(S, sig) {
-  return S.ops ? voicingPool(S, sig) : closePool(S, sig);
+function chordPool(S, sig, region) {
+  return S.ops || region ? voicingPool(S, sig, region) : closePool(S, sig);
 }
-function voicingPool(S, sig) {
+function voicingPool(S, sig, region) {
   const out = [];
   const srcs = sourceSigs(S.fit, sig);
   for (let l = 0; l < 7; l++) for (let a = -1; a <= 1; a++) {
@@ -592,7 +608,7 @@ function voicingPool(S, sig) {
       if (tones.some((t) => Math.abs(t.a) > maxAcc(S))) continue;
       const from = chordSource(tones, srcs, q);
       if (from === undefined) continue;
-      for (const v of enumVoicings(rootPc, q, S.span, S.dup)) {
+      for (const v of enumVoicings(rootPc, q, S.span, S.dup, region)) {
         if (!S.inv && v.bass !== 0) continue;
         const notes = v.midis.map((m) => spellMidi(m, tones[q.iv.findIndex(([, semi]) => (rootPc + semi) % 12 === m % 12)]));
         if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
@@ -627,6 +643,57 @@ function closePool(S, sig) {
   }
   return out;
 }
+/* CAGED: a shape fixes a four-fret position (one finger per fret) from where the
+   key's root falls under a given finger. The scale pattern is every in-key note in
+   those four frets, plus any scale note between the pattern's lowest and highest
+   pitch that can only be reached one fret outside (e.g. the 7th on the 3rd string
+   in the G shape). Out-of-key notes may sit anywhere from one fret below to one
+   fret above the position. Minor keys use the shape of their relative major. */
+const SHAPES = [
+  { id: 'C', s: 4, off: 3, desc: 'root on 5th string, pinky' },
+  { id: 'A', s: 4, off: 1, desc: 'root on 5th string, middle finger' },
+  { id: 'G', s: 5, off: 3, desc: 'root on 6th string, pinky' },
+  { id: 'E', s: 5, off: 1, desc: 'root on 6th string, middle finger' },
+  { id: 'D', s: 3, off: 1, desc: 'root on 4th string, middle finger' },
+];
+const SHAPE_BY = Object.fromEntries(SHAPES.map((x) => [x.id, x]));
+function shapePositions(sig, shapeId) {
+  const sh = SHAPE_BY[shapeId], t = majorTonic(sig);
+  const r0 = ((LPC[t.l] + t.a - OPEN[sh.s]) % 12 + 24) % 12;
+  const out = [];
+  for (let r = r0; r <= NFRETS; r += 12) { const p = r - sh.off; if (p >= 0 && p + 3 <= NFRETS) out.push(p); }
+  return out;
+}
+const regionCache = new Map();
+function cagedRegion(sig, p) {
+  const key = `caged:${sig}:${p}`;
+  if (regionCache.has(key)) return regionCache.get(key);
+  const ka = keyAccs(sig), scale = new Set();
+  for (let l = 0; l < 7; l++) scale.add((LPC[l] + ka[l] + 12) % 12);
+  const pattern = new Set(), have = new Set();
+  let lo = Infinity, hi = -Infinity;
+  for (let s = 0; s < 6; s++) for (let f = p; f <= p + 3; f++) {
+    const m = OPEN[s] + f;
+    if (!scale.has(m % 12)) continue;
+    pattern.add(s * 100 + f); have.add(m); lo = Math.min(lo, m); hi = Math.max(hi, m);
+  }
+  const stretch = [];
+  for (let m = lo; m <= hi; m++) {
+    if (!scale.has(m % 12) || have.has(m)) continue;
+    for (let s = 0; s < 6; s++) for (const f of [p - 1, p + 4]) {
+      if (f >= 0 && f <= NFRETS && OPEN[s] + f === m) { pattern.add(s * 100 + f); stretch.push({ s, f }); }
+    }
+  }
+  const win = [];
+  for (let f = Math.max(0, p - 1); f <= Math.min(NFRETS, p + 4); f++) win.push(f);
+  const region = {
+    key, p, pattern, stretch, frets: [win, win, win, win, win, win],
+    ok: (s, f, m) => (scale.has(m % 12) ? pattern.has(s * 100 + f) : true),
+  };
+  regionCache.set(key, region);
+  return region;
+}
+const shapeLabel = (shape, sig, mode) => `${shape} shape${mode === 'minor' ? ` of ${keyLabel(sig, 'major')}` : ''}`;
 const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const chordSig = (c) => c.notes.map(midiOf).join(',') + c.notes.map((n) => n.l).join('');
 function pickChord(pool, prev) {
@@ -647,7 +714,7 @@ const chordName = (c, sig, mode) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c
 const DEFAULTS = {
   len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
   quals: QUALS.filter((q) => q.def).map((q) => q.id),
-  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', ops: true, span: 4, dup: false, dbl: false, sound: true,
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', pos: 'neck', shapes: ['C', 'A', 'G', 'E', 'D'], ops: true, span: 4, dup: false, dbl: false, sound: true,
 };
 function normalize(s) {
   const d = { ...DEFAULTS, ...(s || {}) };
@@ -658,6 +725,8 @@ function normalize(s) {
   d.lo = Math.min(POS_MAX, Math.max(POS_MIN, +d.lo || POS_MIN));
   d.hi = Math.min(POS_MAX, Math.max(d.lo, +d.hi || DEFAULTS.hi));
   if (!['near', 'key', 'any'].includes(d.fit)) d.fit = 'near';
+  if (!['neck', 'caged'].includes(d.pos)) d.pos = 'neck';
+  d.shapes = SHAPES.map((x) => x.id).filter((id) => (Array.isArray(d.shapes) ? d.shapes : DEFAULTS.shapes).includes(id));
   delete d.roots;
   d.span = Math.min(6, Math.max(2, Math.round(+d.span || 4)));
   d.inv = !!d.inv; d.ops = !!d.ops; d.dup = !!d.dup; d.dbl = !!d.dbl; d.sound = d.sound !== false;
@@ -665,7 +734,8 @@ function normalize(s) {
 }
 // What identifies a "setup" in history (sound is a preference, not part of the drill).
 function canon(s) {
-  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, fit: s.fit, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl };
+  return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, fit: s.fit, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl,
+    ...(s.pos === 'caged' ? { pos: 'caged', shapes: s.shapes.slice() } : {}) };
 }
 function setupId(s) {
   const str = JSON.stringify(canon(s));
@@ -701,7 +771,9 @@ const posName = (p) => { const n = fromPos(p); return LETTERS[n.l] + n.o; };
 function setupTitle(s) { return `${s.len} chords · ${keysSummary(s)}`; }
 function setupSub(s) {
   return [chordsSummary(s), s.inv ? 'inversions' : 'root position', `${posName(s.lo)}–${posName(s.hi)}`,
-    s.ops ? `guitar voicings, stretch ≤ ${s.span}` : 'close position', s.ops && s.dup ? 'doubled notes' : null,
+    s.pos === 'caged' ? (s.shapes.length === 5 ? 'all CAGED shapes' : `${s.shapes.join(', ')} shape${s.shapes.length > 1 ? 's' : ''}`) : null,
+    s.ops || s.pos === 'caged' ? `guitar voicings, stretch ≤ ${s.span}` : 'close position',
+    (s.ops || s.pos === 'caged') && s.dup ? 'doubled notes' : null,
     { near: 'key + neighbours', key: 'key only', any: 'any chords' }[s.fit], s.fit === 'any' && s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
 }
@@ -878,7 +950,7 @@ try { sharedScroll = +localStorage.getItem(LS_SCROLL) || 0; } catch (e) { /* ign
 class Board {
   constructor(host, opts) {
     this.host = host; this.opts = opts || {};
-    this.markers = []; this.ghosts = []; this.degrees = null;
+    this.markers = []; this.ghosts = []; this.degrees = null; this.only = null; this.band = null;
     this.gid = 'wood' + (++boardSeq);
     host.innerHTML = '<div class="fb-scroll"><svg class="fb-svg" xmlns="http://www.w3.org/2000/svg"></svg></div><div class="fb-mini"><div class="fb-mini-win"></div></div>';
     this.scroller = host.querySelector('.fb-scroll');
@@ -986,14 +1058,26 @@ class Board {
     const target = (left + right) / 2 - sw / 2;
     this.scroller.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
   }
+  showFrets(fmin, fmax, smooth) {
+    const sw = this.scroller.clientWidth;
+    const target = Math.max(0, (this.cx(fmin) + this.cx(fmax)) / 2 - sw / 2);
+    if (smooth) this.scroller.scrollTo({ left: target, behavior: 'smooth' });
+    else { this.scroller.scrollLeft = target; this.updateMini(); }
+  }
   centerFret() { return (this.scroller.scrollLeft + this.scroller.clientWidth / 2 - this.openW) / this.fretW; }
   render() {
     if (!this.marksG) return;
     let g = '';
+    if (this.band != null) {
+      const p = this.band;
+      const x0 = p === 0 ? 0 : this.openW + (p - 1) * this.fretW, x1 = this.openW + (p + 3) * this.fretW;
+      g += `<rect class="fb-band" x="${x0}" y="0" width="${x1 - x0}" height="${this.boardH}"/>`;
+    }
     if (this.degrees) {
       for (let s = 0; s < 6; s++) for (let f = 0; f <= NFRETS; f++) {
         const d = this.degrees[(OPEN[s] + f) % 12];
         if (!d) continue;
+        if (this.only && !this.only.has(s * 100 + f)) continue;
         const cls = d === 1 || d === 3 || d === 5 ? d : 'o';
         const x = this.cx(f), y = this.sy(s);
         g += `<circle class="dg dg-${cls}" cx="${x}" cy="${y}" r="${cls === 'o' ? 9.5 : 11}"/><text class="dg-t on-${cls}" x="${x}" y="${y + 0.5}">${d}</text>`;
@@ -1085,7 +1169,16 @@ function buildSetup() {
   $('#tonSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ ton: b.dataset.ton }));
   $('#fitSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ fit: b.dataset.fit }));
   $('#swInv').onclick = () => setS({ inv: !S.inv });
-  $('#swOps').onclick = () => setS({ ops: !S.ops });
+  $('#swOps').onclick = () => { if (S.pos !== 'caged') setS({ ops: !S.ops }); };
+  $('#posSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ pos: b.dataset.pos }));
+  const sl = $('#shapeList');
+  SHAPES.forEach((x) => {
+    const b = document.createElement('button');
+    b.className = 'check'; b.dataset.shape = x.id;
+    b.innerHTML = `<span class="box"></span><b>${x.id}</b><span>${x.desc}</span>`;
+    b.onclick = () => setS({ shapes: S.shapes.includes(x.id) ? S.shapes.filter((y) => y !== x.id) : S.shapes.concat(x.id) });
+    sl.appendChild(b);
+  });
   $('#swDup').onclick = () => setS({ dup: !S.dup });
   $('#spanDown').onclick = () => setS({ span: S.span - 1 });
   $('#spanUp').onclick = () => setS({ span: S.span + 1 });
@@ -1107,12 +1200,25 @@ function whereOnNeck(p) {
 }
 let poolCache = { key: '', min: 0, quals: new Set() };
 function poolStats(s) {
-  const key = JSON.stringify(canon(s));
+  const key = JSON.stringify({ ...canon(s), len: 0 });
   if (poolCache.key === key) return poolCache;
   let min = Infinity;
   const quals = new Set();
-  const sigs = s.fit !== 'any' ? s.sigs : s.sigs.slice(0, 1);
+  const sigs = s.fit !== 'any' || s.pos === 'caged' ? s.sigs : s.sigs.slice(0, 1);
   for (const sig of sigs) {
+    if (s.pos === 'caged') {
+      for (const sh of s.shapes) {
+        let best = 0;
+        for (const p of shapePositions(sig, sh)) {
+          const pool = chordPool(s, sig, cagedRegion(sig, p));
+          best = Math.max(best, pool.length);
+          pool.forEach((c) => quals.add(c.q.id));
+        }
+        min = Math.min(min, best);
+      }
+      if (!s.shapes.length) min = 0;
+      continue;
+    }
     const pool = chordPool(s, sig);
     min = Math.min(min, pool.length);
     pool.forEach((c) => quals.add(c.q.id));
@@ -1136,11 +1242,19 @@ function renderSetup() {
   }[S.fit];
   $('#rowDbl').hidden = S.fit !== 'any';
   $('#swInv').setAttribute('aria-checked', S.inv);
-  $('#swOps').setAttribute('aria-checked', S.ops);
-  $('#opsSub').textContent = S.ops
+  const caged = S.pos === 'caged', ops = S.ops || caged;
+  document.querySelectorAll('#posSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.pos === S.pos));
+  $('#shapeList').hidden = !caged;
+  document.querySelectorAll('#shapeList .check').forEach((b) => b.setAttribute('aria-pressed', S.shapes.includes(b.dataset.shape)));
+  $('#posHint').textContent = caged
+    ? 'Each run fixes a key and one of the selected shapes, and with it a four-fret position. Chords use that scale pattern; notes outside the key may reach one fret beyond it.'
+    : 'Chords can be anywhere on the neck.';
+  $('#swOps').setAttribute('aria-checked', ops);
+  $('#swOps').setAttribute('aria-disabled', caged);
+  $('#opsSub').textContent = caged ? 'Always on with CAGED shapes.' : S.ops
     ? 'Real guitar shapes: one note per string, within the stretch below.'
     : 'Close-position stacks like musictheory.net. Some are unplayable; tap any positions.';
-  $('#rowSpan').hidden = !S.ops; $('#rowDup').hidden = !S.ops;
+  $('#rowSpan').hidden = !ops; $('#rowDup').hidden = !ops;
   $('#spanOut').textContent = S.span;
   $('#spanSub').textContent = `Frets apart, open string = 0 (e.g. 5 to ${5 + S.span})`;
   $('#spanDown').disabled = S.span <= 2; $('#spanUp').disabled = S.span >= 6;
@@ -1156,10 +1270,12 @@ function renderSetup() {
   let problem = '';
   if (!S.sigs.length) problem = 'Select at least one key signature.';
   else if (!S.quals.length) problem = 'Select at least one chord type.';
+  else if (S.pos === 'caged' && !S.shapes.length) problem = 'Select at least one CAGED shape.';
   else {
     const st = poolStats(S), n = st.min;
-    if (!n) problem = S.fit !== 'any' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
-    else note.textContent = `${n} different chord voicings fit these settings${S.fit !== 'any' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
+    if (!n) problem = S.pos === 'caged' ? 'For at least one key and shape, no chord fits. Widen the range, raise the stretch or allow more chord types.'
+      : S.fit !== 'any' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
+    else note.textContent = `${n} different chord voicings fit these settings${S.pos === 'caged' ? ' (in the narrowest key and shape)' : S.fit !== 'any' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
   }
   const qn = $('#qualNote');
   const never = S.sigs.length && S.fit !== 'any' ? S.quals.filter((id) => !poolStats(S).quals.has(id)) : [];
@@ -1176,17 +1292,33 @@ function renderSetup() {
 function prepareRun(settings) {
   const s = normalize(settings);
   if (!s.sigs.length || !s.quals.length) { show('setup'); return; }
-  const sig = rnd(s.sigs);
   const mode = s.ton === 'both' ? rnd(['major', 'minor']) : s.ton;
-  const pool = chordPool(s, sig);
+  let sig = rnd(s.sigs), pool, shape = null, region = null;
+  if (s.pos === 'caged') {
+    // Pick a key, then a shape, then one of that shape's positions on the neck, skipping empty ones.
+    const opts = [];
+    for (const k of [sig].concat(s.sigs.filter((x) => x !== sig))) {
+      for (const sh of s.shapes) for (const p of shapePositions(k, sh)) {
+        const pl = chordPool(s, k, cagedRegion(k, p));
+        if (pl.length) opts.push({ k, sh, p, pl });
+      }
+      if (opts.length) break;
+    }
+    if (!opts.length) { show('setup'); return; }
+    const sh = rnd([...new Set(opts.map((o) => o.sh))]);
+    const o = rnd(opts.filter((x) => x.sh === sh));
+    sig = o.k; shape = o.sh; region = cagedRegion(o.k, o.p); pool = o.pl;
+  } else pool = chordPool(s, sig);
   if (!pool.length) { show('setup'); return; }
-  run = { s, sig, mode, pool, idx: 0, items: [], started: false };
+  run = { s, sig, mode, pool, shape, region, idx: 0, items: [], started: false };
   show('preview');
   $('#pvKey').textContent = keyLabel(sig, mode);
   $('#pvMeta').textContent = `${sigText(sig)[0].toUpperCase() + sigText(sig).slice(1)} · ${s.len} chords`;
   $('#pvSummary').textContent = setupSub(s);
   const nb = [sig - 1, sig + 1].filter((k) => k >= -7 && k <= 7).map((k) => keyLabel(k, mode));
   $('#pvFrom').textContent = s.fit === 'near' ? `Chords also borrowed from ${nb.join(' and ')}` : s.fit === 'key' ? 'All chords from this key' : 'Chords on any root';
+  $('#pvShape').hidden = !shape;
+  if (shape) $('#pvShape').textContent = `${shapeLabel(shape, sig, mode)} · frets ${region.p}–${region.p + 3}`;
   drawStaff($('#pvStaff'), { sig, scale: 0.85, minAbove: 1.5, minBelow: 2.5 });
   const tonic = mode === 'minor' ? minorTonic(sig) : majorTonic(sig);
   const ka = keyAccs(sig);
@@ -1197,7 +1329,10 @@ function prepareRun(settings) {
   }
   if (!pvBoard) pvBoard = new Board($('#pvBoard'), {});
   pvBoard.degrees = deg; pvBoard.markers = []; pvBoard.ghosts = [];
+  pvBoard.only = region ? region.pattern : null;
+  pvBoard.band = region ? region.p : null;
   pvBoard.layout();
+  if (region) pvBoard.showFrets(Math.max(0, region.p - 1), region.p + 4, false);
 }
 
 /* ---------- run ---------- */
@@ -1215,8 +1350,10 @@ function startRun() {
   run.started = true;
   run.t0 = performance.now();
   run.idx = 0; run.items = [];
-  $('#runKey').textContent = keyLabel(run.sig, run.mode);
+  $('#runKey').textContent = keyLabel(run.sig, run.mode) + (run.shape ? ` · ${run.shape} shape` : '');
+  runBoard.band = run.region ? run.region.p : null;
   runBoard.layout();
+  if (run.region) runBoard.showFrets(Math.max(0, run.region.p - 1), run.region.p + 4, false);
   nextChord();
   clearInterval(timerInt);
   timerInt = setInterval(() => { if (run && run.started && !run.done) $('#timer').textContent = fmtTime(performance.now() - run.t0); }, 100);
@@ -1358,9 +1495,10 @@ function finishRun() {
   st.best = st.best == null ? score : Math.max(st.best, score);
   st.fastest = st.fastest == null ? ms : Math.min(st.fastest, ms);
   st.last = now;
-  st.recent = [{ at: now, score, ms, key: keyLabel(run.sig, run.mode) }].concat(st.recent || []).slice(0, 20);
+  const runLabel = keyLabel(run.sig, run.mode) + (run.shape ? ` · ${run.shape} shape` : '');
+  st.recent = [{ at: now, score, ms, key: runLabel }].concat(st.recent || []).slice(0, 20);
   store.saveSetup(st);
-  lastResult = { s: run.s, score, ms, st, items: run.items, key: keyLabel(run.sig, run.mode), sig: run.sig, mode: run.mode };
+  lastResult = { s: run.s, score, ms, st, items: run.items, key: runLabel, sig: run.sig, mode: run.mode };
   showResults();
 }
 function showResults() {
@@ -1476,7 +1614,7 @@ function start(hotData) {
   show(hotData && hotData.view === 'history' ? 'history' : 'setup');
   store.initCloud();
   // test hook
-  window.__fcd = { chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
+  window.__fcd = { poolStats, cagedRegion, shapePositions, SHAPES, chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
 }
 if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
   try { window.claude.hot.snapshot(() => ({ settings: S, view: view === 'history' ? 'history' : 'setup' })); } catch (e) { /* ignore */ }

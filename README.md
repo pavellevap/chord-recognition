@@ -18,6 +18,13 @@ and you find its exact pitches on a 19-fret guitar neck.
   or one a sharp/flat away (in C: C, F or G major); chords taken from a neighbour are labelled
   "from F major" etc. after you solve them. A fully diminished 7th only needs three of its four
   notes in the key (B D F A♭ in C major).
+- **Position: CAGED shape** fixes a key and one of the selected shapes per run. The shape places a
+  four-fret position (one finger per fret) from where the root falls: C = 5th string pinky,
+  A = 5th string middle, G = 6th string pinky, E = 6th string middle, D = 4th string middle
+  (minor keys use their relative major). The scale pattern is every in-key note in those frets plus
+  scale notes between the pattern's lowest and highest pitch that are only reachable one fret outside.
+  Chords use pattern notes for in-key pitches; out-of-key notes may be one fret beyond the position.
+  The preview shows degrees for the pattern only.
 - **Guitar voicings** are found by searching the neck: one note per string, every chord tone present,
   all positions (open strings count as fret 0) within the max stretch. With doubled notes on,
   shapes may repeat chord tones on adjacent strings and must fit four fingers (a barre counts as one).
