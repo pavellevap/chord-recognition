@@ -309,6 +309,10 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
           <button id="spanUp" aria-label="Larger stretch">+</button>
         </div>
       </div>
+      <div class="row" id="rowAdj">
+        <span class="lbl">Adjacent strings<span class="sub">All chord notes on consecutive strings, none skipped (e.g. 4‑3‑2 or 5‑4‑3‑2)</span></span>
+        <button class="switch" id="swAdj" role="switch" aria-checked="false" aria-label="Adjacent strings"></button>
+      </div>
       <div class="row" id="rowDup">
         <span class="lbl">Doubled notes<span class="sub">Also full shapes like barre chords, where chord tones repeat in other octaves</span></span>
         <button class="switch" id="swDup" role="switch" aria-checked="false" aria-label="Doubled notes"></button>
@@ -514,8 +518,8 @@ function allAssignments(ps) {
    shape) and it must fit four fingers, counting a barre at the lowest fret as one. */
 const voicingCache = new Map();
 const ALL_FRETS = Array.from({ length: NFRETS + 1 }, (_, i) => i);
-function enumVoicings(rootPc, q, span, dup, region) {
-  const ck = `${rootPc}|${q.id}|${span}|${dup}|${region ? region.key : 'neck'}`;
+function enumVoicings(rootPc, q, span, dup, region, adj) {
+  const ck = `${rootPc}|${q.id}|${span}|${dup}|${adj ? 'adj' : ''}|${region ? region.key : 'neck'}`;
   if (voicingCache.has(ck)) return voicingCache.get(ck);
   const pcs = q.iv.map(([, semi]) => (rootPc + semi) % 12);
   const toneOf = {}; pcs.forEach((pc, i) => { toneOf[pc] = i; });
@@ -525,9 +529,13 @@ function enumVoicings(rootPc, q, span, dup, region) {
   let distinct = 0;
   const leaf = () => {
     if (distinct < n) return;
-    if (dup) {
+    const doubled = cur.length > n;
+    if (doubled || adj) {
+      // consecutive strings, nothing skipped in between
       const ss = cur.map((k) => k.s);
       if (Math.max(...ss) - Math.min(...ss) + 1 !== cur.length) return;
+    }
+    if (doubled) {
       const ms = new Set(cur.map((k) => k.m));
       if (ms.size !== cur.length) return;
       const fr = cur.filter((k) => k.f > 0).map((k) => k.f);
@@ -608,7 +616,7 @@ function voicingPool(S, sig, region) {
       if (tones.some((t) => Math.abs(t.a) > maxAcc(S))) continue;
       const from = chordSource(tones, srcs, q);
       if (from === undefined) continue;
-      for (const v of enumVoicings(rootPc, q, S.span, S.dup, region)) {
+      for (const v of enumVoicings(rootPc, q, S.span, S.dup, region, S.adj)) {
         if (!S.inv && v.bass !== 0) continue;
         const notes = v.midis.map((m) => spellMidi(m, tones[q.iv.findIndex(([, semi]) => (rootPc + semi) % 12 === m % 12)]));
         if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
@@ -714,7 +722,7 @@ const chordName = (c, sig, mode) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c
 const DEFAULTS = {
   len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
   quals: QUALS.filter((q) => q.def).map((q) => q.id),
-  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', pos: 'neck', shapes: ['C', 'A', 'G', 'E', 'D'], ops: true, span: 4, dup: false, dbl: false, sound: true,
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', pos: 'neck', shapes: ['C', 'A', 'G', 'E', 'D'], ops: true, span: 4, dup: false, adj: false, dbl: false, sound: true,
 };
 function normalize(s) {
   const d = { ...DEFAULTS, ...(s || {}) };
@@ -729,12 +737,13 @@ function normalize(s) {
   d.shapes = SHAPES.map((x) => x.id).filter((id) => (Array.isArray(d.shapes) ? d.shapes : DEFAULTS.shapes).includes(id));
   delete d.roots;
   d.span = Math.min(6, Math.max(2, Math.round(+d.span || 4)));
-  d.inv = !!d.inv; d.ops = !!d.ops; d.dup = !!d.dup; d.dbl = !!d.dbl; d.sound = d.sound !== false;
+  d.inv = !!d.inv; d.ops = !!d.ops; d.dup = !!d.dup; d.adj = !!d.adj; d.dbl = !!d.dbl; d.sound = d.sound !== false;
   return d;
 }
 // What identifies a "setup" in history (sound is a preference, not part of the drill).
 function canon(s) {
   return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, fit: s.fit, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl,
+    ...(s.adj ? { adj: true } : {}),
     ...(s.pos === 'caged' ? { pos: 'caged', shapes: s.shapes.slice() } : {}) };
 }
 function setupId(s) {
@@ -774,6 +783,7 @@ function setupSub(s) {
     s.pos === 'caged' ? (s.shapes.length === 5 ? 'all CAGED shapes' : `${s.shapes.join(', ')} shape${s.shapes.length > 1 ? 's' : ''}`) : null,
     s.ops || s.pos === 'caged' ? `guitar voicings, stretch ≤ ${s.span}` : 'close position',
     (s.ops || s.pos === 'caged') && s.dup ? 'doubled notes' : null,
+    (s.ops || s.pos === 'caged') && s.adj ? 'adjacent strings' : null,
     { near: 'key + neighbours', key: 'key only', any: 'any chords' }[s.fit], s.fit === 'any' && s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
 }
@@ -1180,6 +1190,7 @@ function buildSetup() {
     sl.appendChild(b);
   });
   $('#swDup').onclick = () => setS({ dup: !S.dup });
+  $('#swAdj').onclick = () => setS({ adj: !S.adj });
   $('#spanDown').onclick = () => setS({ span: S.span - 1 });
   $('#spanUp').onclick = () => setS({ span: S.span + 1 });
   $('#swDbl').onclick = () => setS({ dbl: !S.dbl });
@@ -1254,7 +1265,8 @@ function renderSetup() {
   $('#opsSub').textContent = caged ? 'Always on with CAGED shapes.' : S.ops
     ? 'Real guitar shapes: one note per string, within the stretch below.'
     : 'Close-position stacks like musictheory.net. Some are unplayable; tap any positions.';
-  $('#rowSpan').hidden = !ops; $('#rowDup').hidden = !ops;
+  $('#rowSpan').hidden = !ops; $('#rowDup').hidden = !ops; $('#rowAdj').hidden = !ops;
+  $('#swAdj').setAttribute('aria-checked', S.adj);
   $('#spanOut').textContent = S.span;
   $('#spanSub').textContent = `Frets apart, open string = 0 (e.g. 5 to ${5 + S.span})`;
   $('#spanDown').disabled = S.span <= 2; $('#spanUp').disabled = S.span >= 6;

@@ -28,6 +28,7 @@ and you find its exact pitches on a 19-fret guitar neck.
 - **Guitar voicings** are found by searching the neck: one note per string, every chord tone present,
   all positions (open strings count as fret 0) within the max stretch. With doubled notes on,
   shapes may repeat chord tones on adjacent strings and must fit four fingers (a barre counts as one).
+  With adjacent strings on, every chord sits on consecutive strings with none skipped.
   With voicings off, chords are close-position stacks as on musictheory.net.
 - **Before each run** a fretboard shows scale degrees 1–7 for the run's key; 1, 3 and 5 are colored.
 - **During a run** you tap notes and press Check. Wrong notes turn red and you retry until correct;
