@@ -285,6 +285,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
       <div class="seg" id="posSeg" role="group" aria-label="Position"><button data-pos="neck">Whole neck</button><button data-pos="caged">CAGED shape</button></div>
       <p class="hint" id="posHint"></p>
       <div class="shapelist" id="shapeList"></div>
+      <p class="hint" id="shapeNote" hidden></p>
     </div>
 
     <div class="group">
@@ -636,8 +637,11 @@ function chordSource(tones, srcs, q) {
 // occur as the out-of-key note of a diminished 7th (e.g. B𝄫 in D♭ major), so allow them.
 const maxAcc = (S) => (S.dbl || S.fit !== 'any' ? 2 : 1);
 function chordPool(S, sig, region) {
-  return S.ops || region ? voicingPool(S, sig, region) : closePool(S, sig);
+  return S.ops || region || S.guitar ? voicingPool(S, sig, region) : closePool(S, sig);
 }
+const cagedMaxP = (S) => (S.guitar ? MAX_GUITAR_POS : NFRETS);
+// Lowest fretted note of a fingering: where the index finger sits (open strings are free).
+const indexFret = (fg) => { const fr = fg.filter((k) => k.f > 0).map((k) => k.f); return fr.length ? Math.min(...fr) : 0; };
 function voicingPool(S, sig, region) {
   const out = [];
   const srcs = sourceSigs(S.fit, sig);
@@ -651,10 +655,14 @@ function voicingPool(S, sig, region) {
       if (from === undefined) continue;
       for (const v of enumVoicings(rootPc, q, S.span, S.dup, region, S.adj)) {
         if (!S.inv && v.bass !== 0) continue;
+        // On a real guitar (whole neck), keep only fingerings with the index finger at fret 10 or
+        // below. CAGED runs are already limited by their position.
+        const fingerings = S.guitar && !region ? v.fingerings.filter((fg) => indexFret(fg) <= MAX_GUITAR_POS) : v.fingerings;
+        if (!fingerings.length) continue;
         const notes = v.midis.map((m) => spellMidi(m, tones[q.iv.findIndex(([, semi]) => (rootPc + semi) % 12 === m % 12)]));
         if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
         const close = notes.length === q.iv.length && v.midis[v.midis.length - 1] - v.midis[0] < 12;
-        out.push({ root: { l, a }, q, inv: v.bass, notes, fingerings: v.fingerings, size: notes.length, close, from });
+        out.push({ root: { l, a }, q, inv: v.bass, notes, fingerings, size: notes.length, close, from });
       }
     }
   }
@@ -698,11 +706,14 @@ const SHAPES = [
   { id: 'D', s: 3, off: 1, desc: 'root on 4th string, middle finger' },
 ];
 const SHAPE_BY = Object.fromEntries(SHAPES.map((x) => [x.id, x]));
-function shapePositions(sig, shapeId) {
+// Playing on a real guitar, positions above 10 (index finger at fret 11 or higher) are
+// hard to reach, on a classical guitar especially, so guitar runs stay at position 10 or below.
+const MAX_GUITAR_POS = 10;
+function shapePositions(sig, shapeId, maxP = NFRETS) {
   const sh = SHAPE_BY[shapeId], t = majorTonic(sig);
   const r0 = ((LPC[t.l] + t.a - OPEN[sh.s]) % 12 + 24) % 12;
   const out = [];
-  for (let r = r0; r <= NFRETS; r += 12) { const p = r - sh.off; if (p >= 0 && p + 3 <= NFRETS) out.push(p); }
+  for (let r = r0; r <= NFRETS; r += 12) { const p = r - sh.off; if (p >= 0 && p + 3 <= NFRETS && p <= maxP) out.push(p); }
   return out;
 }
 const regionCache = new Map();
@@ -815,10 +826,10 @@ function setupTitle(s) { return `${s.len} chords · ${keysSummary(s)}`; }
 function setupSub(s) {
   return [chordsSummary(s), s.inv ? 'inversions' : 'root position', `${posName(s.lo)}–${posName(s.hi)}`,
     s.pos === 'caged' ? (s.shapes.length === 5 ? 'all CAGED shapes' : `${s.shapes.join(', ')} shape${s.shapes.length > 1 ? 's' : ''}`) : null,
-    s.ops || s.pos === 'caged' ? `guitar voicings, stretch ≤ ${s.span}` : 'close position',
-    (s.ops || s.pos === 'caged') && s.dup ? 'doubled notes' : null,
-    (s.ops || s.pos === 'caged') && s.adj ? 'adjacent strings' : null,
-    s.guitar ? 'played on guitar' : null,
+    s.ops || s.pos === 'caged' || s.guitar ? `guitar voicings, stretch ≤ ${s.span}` : 'close position',
+    (s.ops || s.pos === 'caged' || s.guitar) && s.dup ? 'doubled notes' : null,
+    (s.ops || s.pos === 'caged' || s.guitar) && s.adj ? 'adjacent strings' : null,
+    s.guitar ? 'played on guitar, positions up to 10' : null,
     { near: 'key + neighbours', key: 'key only', any: 'any chords' }[s.fit], s.fit === 'any' && s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
 }
@@ -1403,7 +1414,7 @@ function buildSetup() {
   $('#tonSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ ton: b.dataset.ton }));
   $('#fitSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ fit: b.dataset.fit }));
   $('#swInv').onclick = () => setS({ inv: !S.inv });
-  $('#swOps').onclick = () => { if (S.pos !== 'caged') setS({ ops: !S.ops }); };
+  $('#swOps').onclick = () => { if (S.pos !== 'caged' && !S.guitar) setS({ ops: !S.ops }); };
   $('#posSeg').querySelectorAll('button').forEach((b) => b.onclick = () => setS({ pos: b.dataset.pos }));
   const sl = $('#shapeList');
   SHAPES.forEach((x) => {
@@ -1438,27 +1449,32 @@ function poolStats(s) {
   const key = JSON.stringify({ ...canon(s), len: 0 });
   if (poolCache.key === key) return poolCache;
   let min = Infinity;
-  const quals = new Set();
+  const quals = new Set(), unreachable = [];
   const sigs = s.fit !== 'any' || s.pos === 'caged' ? s.sigs : s.sigs.slice(0, 1);
   for (const sig of sigs) {
     if (s.pos === 'caged') {
+      // A run picks among the key's shapes that have a usable position, so a shape with none
+      // (e.g. above position 10 with guitar input) is skipped for that key, not an error.
+      let keyMin = Infinity;
       for (const sh of s.shapes) {
         let best = 0;
-        for (const p of shapePositions(sig, sh)) {
+        const ps = shapePositions(sig, sh, cagedMaxP(s));
+        if (!ps.length) { unreachable.push(`${sh} shape in ${keyLabel(sig, 'major')}`); continue; }
+        for (const p of ps) {
           const pool = chordPool(s, sig, cagedRegion(sig, p));
           best = Math.max(best, pool.length);
           pool.forEach((c) => quals.add(c.q.id));
         }
-        min = Math.min(min, best);
+        if (best) keyMin = Math.min(keyMin, best);
       }
-      if (!s.shapes.length) min = 0;
+      min = Math.min(min, keyMin === Infinity ? 0 : keyMin);
       continue;
     }
     const pool = chordPool(s, sig);
     min = Math.min(min, pool.length);
     pool.forEach((c) => quals.add(c.q.id));
   }
-  poolCache = { key, min: sigs.length ? min : 0, quals };
+  poolCache = { key, min: sigs.length ? min : 0, quals, unreachable };
   return poolCache;
 }
 function renderSetup() {
@@ -1477,7 +1493,7 @@ function renderSetup() {
   }[S.fit];
   $('#rowDbl').hidden = S.fit !== 'any';
   $('#swInv').setAttribute('aria-checked', S.inv);
-  const caged = S.pos === 'caged', ops = S.ops || caged;
+  const caged = S.pos === 'caged', ops = S.ops || caged || S.guitar;
   document.querySelectorAll('#posSeg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.pos === S.pos));
   $('#shapeList').hidden = !caged;
   document.querySelectorAll('#shapeList .check').forEach((b) => b.setAttribute('aria-pressed', S.shapes.includes(b.dataset.shape)));
@@ -1485,8 +1501,8 @@ function renderSetup() {
     ? 'Each run fixes a key and one of the selected shapes, and with it a four-fret position. Chords use that scale pattern; notes outside the key may reach one fret beyond it.'
     : 'Chords can be anywhere on the neck.';
   $('#swOps').setAttribute('aria-checked', ops);
-  $('#swOps').setAttribute('aria-disabled', caged);
-  $('#opsSub').textContent = caged ? 'Always on with CAGED shapes.' : S.ops
+  $('#swOps').setAttribute('aria-disabled', caged || S.guitar);
+  $('#opsSub').textContent = caged ? 'Always on with CAGED shapes.' : S.guitar ? 'Always on when playing on guitar.' : S.ops
     ? 'Real guitar shapes: one note per string, within the stretch below.'
     : 'Close-position stacks like musictheory.net. Some are unplayable; tap any positions.';
   $('#rowSpan').hidden = !ops; $('#rowDup').hidden = !ops; $('#rowAdj').hidden = !ops;
@@ -1513,6 +1529,10 @@ function renderSetup() {
       : S.fit !== 'any' ? 'For at least one selected key, no chord fits. Widen the range or allow more chord types.' : 'No chord fits these settings. Widen the range or allow more chord types.';
     else note.textContent = `${n} different chord voicings fit these settings${S.pos === 'caged' ? ' (in the narrowest key and shape)' : S.fit !== 'any' && S.sigs.length > 1 ? ' (in the narrowest key)' : ''}.`;
   }
+  const sn = $('#shapeNote');
+  const unr = S.pos === 'caged' && S.sigs.length && S.shapes.length ? poolStats(S).unreachable : [];
+  sn.hidden = !unr.length;
+  if (unr.length) sn.textContent = `With guitar input, positions stop at fret 10, so these never come up: ${unr.join(', ')}. Runs in those keys use the other shapes.`;
   const qn = $('#qualNote');
   const never = S.sigs.length && S.fit !== 'any' ? S.quals.filter((id) => !poolStats(S).quals.has(id)) : [];
   qn.hidden = !never.length;
@@ -1534,7 +1554,7 @@ function prepareRun(settings) {
     // Pick a key, then a shape, then one of that shape's positions on the neck, skipping empty ones.
     const opts = [];
     for (const k of [sig].concat(s.sigs.filter((x) => x !== sig))) {
-      for (const sh of s.shapes) for (const p of shapePositions(k, sh)) {
+      for (const sh of s.shapes) for (const p of shapePositions(k, sh, cagedMaxP(s))) {
         const pl = chordPool(s, k, cagedRegion(k, p));
         if (pl.length) opts.push({ k, sh, p, pl });
       }
@@ -1548,6 +1568,10 @@ function prepareRun(settings) {
   if (!pool.length) { show('setup'); return; }
   run = { s, sig, mode, pool, shape, region, idx: 0, items: [], started: false };
   show('preview');
+  renderPreview();
+}
+function renderPreview() {
+  const { s, sig, mode, shape, region } = run;
   $('#pvKey').textContent = keyLabel(sig, mode);
   $('#pvMeta').textContent = `${sigText(sig)[0].toUpperCase() + sigText(sig).slice(1)} · ${s.len} chords`;
   $('#pvSummary').textContent = setupSub(s);
@@ -1591,8 +1615,22 @@ function toggleGuitar() {
   if (on && micBlocked()) return;
   run.s = normalize({ ...run.s, guitar: on });
   setS({ guitar: on });
-  $('#micErr').hidden = true;
-  renderGuitarToggle();
+  // Guitar input changes which chords are playable: recompute this run's chords, keeping its
+  // key; a CAGED run above position 10 moves to the same shape lower down (or is re-picked).
+  if (run.shape) {
+    let p = run.region.p;
+    if (p > cagedMaxP(run.s) || !chordPool(run.s, run.sig, cagedRegion(run.sig, p)).length) {
+      const alts = shapePositions(run.sig, run.shape, cagedMaxP(run.s)).filter((x) => chordPool(run.s, run.sig, cagedRegion(run.sig, x)).length);
+      if (!alts.length) { prepareRun(run.s); return; }
+      p = rnd(alts);
+    }
+    run.region = cagedRegion(run.sig, p);
+    run.pool = chordPool(run.s, run.sig, run.region);
+  } else {
+    run.pool = chordPool(run.s, run.sig);
+    if (!run.pool.length) { prepareRun(run.s); return; }
+  }
+  renderPreview();
 }
 
 /* ---------- run ---------- */
@@ -1983,7 +2021,7 @@ function start(hotData) {
   show(hotData && hotData.view === 'history' ? 'history' : 'setup');
   store.initCloud();
   // test hook
-  window.__fcd = { NoteListener, mic, needFrames, onMicFrame, get view() { return view; }, poolStats, cagedRegion, shapePositions, SHAPES, chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
+  window.__fcd = { MAX_GUITAR_POS, indexFret, toggleGuitar, NoteListener, mic, needFrames, onMicFrame, get view() { return view; }, poolStats, cagedRegion, shapePositions, SHAPES, chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
 }
 if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
   try { window.claude.hot.snapshot(() => ({ settings: S, view: view === 'history' ? 'history' : 'setup' })); } catch (e) { /* ignore */ }

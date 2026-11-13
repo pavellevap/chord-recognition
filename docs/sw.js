@@ -1,7 +1,7 @@
 // Service worker for the installed app (built into docs/sw.js by scripts/build-standalone.sh).
 // The page itself is fetched network-first, so a new version shows up on the next launch
 // while online; everything else is served from cache so the app also opens offline.
-const VERSION = 'c4abf5da2caf';
+const VERSION = 'f3744a36cf3c';
 const SHELL = `shell-${VERSION}`;
 const RUNTIME = 'runtime-v1';
 const SHELL_FILES = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-180.png'];
