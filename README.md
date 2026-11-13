@@ -5,6 +5,9 @@ and you find its exact pitches on a 19-fret guitar neck.
 
 - `index.html` is the whole app. It is published as a claude.ai Artifact
   (https://claude.ai/artifact/ToKamrzMfJwgTyassn84N8), which wraps it in a document skeleton.
+- `docs/index.html` is a standalone copy for GitHub Pages (https://pavellevap.github.io/chord-recognition/),
+  built with `scripts/build-standalone.sh`. Rebuild it after every change to `index.html`.
+  It exists because the Artifact frame cannot use the microphone; history there is kept in the browser.
 - Notation is drawn with VexFlow 4.2.5 (loaded from jsDelivr).
 - Run history is stored per user in the Artifact's `db` store (`data/users/<id>/…`),
   with `localStorage` as a fallback when the store is unavailable.
@@ -35,3 +38,10 @@ and you find its exact pitches on a 19-fret guitar neck.
   accuracy counts chords solved on the first try without "Show answer".
 - **History** keeps one entry per distinct setup with run count, last run, and decaying averages of
   score and time (each new run weighted 10%, bias-corrected so early averages are not skewed).
+- **Play on guitar** (toggle on the key screen before a run, standalone page only): the microphone
+  listens during the run and nowhere else, and you pluck the chord's notes one string at a time.
+  Each pluck is found by a jump in loudness or brightness; the spectrum ~0.12 s later is compared with
+  the one just before it, and every semitone E2–B5 is scored by how many of its harmonics appear in the
+  new energy (a reading an octave too low lacks its odd harmonics and is rejected). A chord tone must
+  win 2 frames in a row, a wrong note 3, a wrong note an octave from a chord tone 4. A wrong note counts
+  as a miss; the chord is done when every chord tone has been heard.
