@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Fretboard Chord Drill</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#e8ecf0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#10141a" media="(prefers-color-scheme: dark)"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-180.png"><meta name="mobile-web-app-capable" content="yes"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Fretboard Chord Drill</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,6 +63,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 /* header */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 14px 10px; flex-wrap: wrap; }
 .brand { font-family: var(--font-display); font-size: 20px; letter-spacing: .01em; }
+.install { margin-left: auto; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; }
 .tabs { display: flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
 .tab { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-size: 14px; color: var(--muted); }
 .tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); font-weight: 700; }
@@ -247,6 +248,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 <div id="app">
   <header class="top" id="topbar">
     <div class="brand">Fretboard Chord Drill</div>
+    <button class="install" id="installBtn" hidden>Install app</button>
     <nav class="tabs" aria-label="Sections">
       <button class="tab" id="tabSetup" data-go="setup" aria-current="page">Practice</button>
       <button class="tab" id="tabHistory" data-go="history">History</button>
@@ -823,6 +825,17 @@ function setupSub(s) {
 
 /* ---------- storage ---------- */
 const LS_KEY = 'fcd.v1';
+// "Install app" appears only where the browser offers installation (the standalone page).
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
+window.addEventListener('appinstalled', () => { installEvt = null; $('#installBtn').hidden = true; });
+$('#installBtn').addEventListener('click', async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  try { await installEvt.userChoice; } catch (e) { /* ignore */ }
+  installEvt = null; $('#installBtn').hidden = true;
+});
+
 const store = {
   settings: normalize(null), setups: {}, db: null, uid: null, cloud: 'pending',
   loadLocal() {
@@ -1982,4 +1995,4 @@ const boot = () => {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
 </script>
-</body></html>
+<script>if("serviceWorker"in navigator)addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})</script></body></html>

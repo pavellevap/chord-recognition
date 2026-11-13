@@ -5,9 +5,11 @@ and you find its exact pitches on a 19-fret guitar neck.
 
 - `index.html` is the whole app. It is published as a claude.ai Artifact
   (https://claude.ai/artifact/ToKamrzMfJwgTyassn84N8), which wraps it in a document skeleton.
-- `docs/index.html` is a standalone copy for GitHub Pages (https://pavellevap.github.io/chord-recognition/),
-  built with `scripts/build-standalone.sh`. Rebuild it after every change to `index.html`.
-  It exists because the Artifact frame cannot use the microphone; history there is kept in the browser.
+- `docs/` is the standalone, installable app for GitHub Pages (https://pavellevap.github.io/chord-recognition/):
+  `index.html` wrapped in a full document, a web app manifest, icons and a service worker for offline use.
+  Build it with `scripts/build-standalone.sh` after every change to `index.html` (icons: `scripts/make-icons.py`).
+  It exists because the Artifact frame cannot use the microphone; its history is kept on the device.
+  On Android, Chrome offers "Install app" (also an Install button in the app's header).
 - Notation is drawn with VexFlow 4.2.5 (loaded from jsDelivr).
 - Run history is stored per user in the Artifact's `db` store (`data/users/<id>/…`),
   with `localStorage` as a fallback when the store is unavailable.
