@@ -47,3 +47,5 @@ and you find its exact pitches on a 19-fret guitar neck.
   new energy (a reading an octave too low lacks its odd harmonics and is rejected). A chord tone must
   win 2 frames in a row, a wrong note 3, a wrong note an octave from a chord tone 4. A wrong note counts
   as a miss; the chord is done when every chord tone has been heard.
+  Guitar runs stay reachable: chords need a fingering with the index finger at fret 10 or lower
+  (CAGED: positions up to 10, skipping key/shape pairs that have none), and voicings are always on.
