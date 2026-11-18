@@ -30,6 +30,8 @@ and you find its exact pitches on a 19-fret guitar neck.
   scale notes between the pattern's lowest and highest pitch that are only reachable one fret outside.
   Chords use pattern notes for in-key pitches; out-of-key notes may be one fret beyond the position.
   The preview shows degrees for the pattern only.
+- **Highest fret** (5–19, default 19): chords, CAGED positions and their stretch notes stay at or below
+  it, the fretboard ends there, and the pitch range's top is capped at that fret on the high E string.
 - **Guitar voicings** are found by searching the neck: one note per string, every chord tone present,
   all positions (open strings count as fret 0) within the max stretch. With doubled notes on,
   shapes may repeat chord tones on adjacent strings and must fit four fingers (a barre counts as one).

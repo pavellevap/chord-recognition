@@ -310,6 +310,14 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
         <div class="vstep"><span>High</span><button id="hiUp" aria-label="Raise highest note">▲</button><button id="hiDown" aria-label="Lower highest note">▼</button></div>
       </div>
       <p class="range-labels" id="rangeLabels"></p>
+      <div class="row">
+        <span class="lbl">Highest fret<span class="sub">Chords stay at or below it, and the fretboard ends there</span></span>
+        <div class="stepper">
+          <button id="mfDown" aria-label="Lower highest fret">−</button>
+          <output id="mfOut">19</output>
+          <button id="mfUp" aria-label="Raise highest fret">+</button>
+        </div>
+      </div>
       <p class="hint">Written pitch. Guitar sounds an octave lower than written, so written E3 is the open 6th string.</p>
     </div>
 
@@ -450,6 +458,13 @@ const NFRETS = 19;
 const SOUND_LO = 40, SOUND_HI = OPEN[0] + NFRETS; // E2 .. B5 sounding
 const POS_MIN = 3 * 7 + 2;                        // written E3
 const POS_MAX = 6 * 7 + 6;                        // written B6
+// Highest written staff position reachable with frets up to maxF (high E string, fret maxF)
+function posMaxFor(maxF) {
+  const top = OPEN[0] + maxF + 12;                 // written midi
+  let p = POS_MAX;
+  while (p > POS_MIN && midiOf(fromPos(p)) > top) p--;
+  return p;
+}
 const ACC_TXT = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
 const ACC_VF = { '-2': 'bb', '-1': 'b', '0': 'n', '1': '#', '2': '##' };
 const midiOf = (n) => 12 * (n.o + 1) + LPC[n.l] + n.a;   // written pitch
@@ -512,14 +527,14 @@ function buildChord(root, q, inv) {
 }
 
 // Can these sounding pitches be fretted on six different strings?
-function canAssign(ps) {
+function canAssign(ps, maxF = NFRETS) {
   const used = [false, false, false, false, false, false];
   const rec = (i) => {
     if (i === ps.length) return true;
     for (let s = 0; s < 6; s++) {
       if (used[s]) continue;
       const f = ps[i] - OPEN[s];
-      if (f < 0 || f > NFRETS) continue;
+      if (f < 0 || f > maxF) continue;
       used[s] = true;
       if (rec(i + 1)) return true;
       used[s] = false;
@@ -528,14 +543,14 @@ function canAssign(ps) {
   };
   return rec(0);
 }
-function allAssignments(ps) {
+function allAssignments(ps, maxF = NFRETS) {
   const out = [], used = [false, false, false, false, false, false], cur = [];
   const rec = (i) => {
     if (i === ps.length) { out.push(cur.slice()); return; }
     for (let s = 0; s < 6; s++) {
       if (used[s]) continue;
       const f = ps[i] - OPEN[s];
-      if (f < 0 || f > NFRETS) continue;
+      if (f < 0 || f > maxF) continue;
       used[s] = true; cur.push({ s, f, m: ps[i] });
       rec(i + 1);
       cur.pop(); used[s] = false;
@@ -552,8 +567,9 @@ function allAssignments(ps) {
    shape) and it must fit four fingers, counting a barre at the lowest fret as one. */
 const voicingCache = new Map();
 const ALL_FRETS = Array.from({ length: NFRETS + 1 }, (_, i) => i);
-function enumVoicings(rootPc, q, span, dup, region, adj) {
-  const ck = `${rootPc}|${q.id}|${span}|${dup}|${adj ? 'adj' : ''}|${region ? region.key : 'neck'}`;
+function enumVoicings(rootPc, q, span, dup, region, adj, maxF = NFRETS) {
+  const ck = `${rootPc}|${q.id}|${span}|${dup}|${adj ? 'adj' : ''}|${maxF}|${region ? region.key : 'neck'}`;
+  const neckFrets = maxF >= NFRETS ? ALL_FRETS : ALL_FRETS.filter((f) => f <= maxF);
   if (voicingCache.has(ck)) return voicingCache.get(ck);
   const pcs = q.iv.map(([, semi]) => (rootPc + semi) % 12);
   const toneOf = {}; pcs.forEach((pc, i) => { toneOf[pc] = i; });
@@ -590,7 +606,7 @@ function enumVoicings(rootPc, q, span, dup, region, adj) {
     if (s === 6) { leaf(); return; }
     dfs(s + 1, lo, hi);
     if (cur.length >= maxNotes) return;
-    for (const f of (region ? region.frets[s] : ALL_FRETS)) {
+    for (const f of (region ? region.frets[s] : neckFrets)) {
       const m = OPEN[s] + f, t = toneOf[m % 12];
       if (t === undefined) continue;
       if (region && !region.ok(s, f, m)) continue;
@@ -640,6 +656,9 @@ function chordPool(S, sig, region) {
   return S.ops || region || S.guitar ? voicingPool(S, sig, region) : closePool(S, sig);
 }
 const cagedMaxP = (S) => (S.guitar ? MAX_GUITAR_POS : NFRETS);
+// CAGED positions and patterns under a run's settings (guitar reach, highest fret)
+const positionsFor = (S, sig, shape) => shapePositions(sig, shape, cagedMaxP(S), S.maxFret);
+const regionFor = (S, sig, p) => cagedRegion(sig, p, S.maxFret);
 // Lowest fretted note of a fingering: where the index finger sits (open strings are free).
 const indexFret = (fg) => { const fr = fg.filter((k) => k.f > 0).map((k) => k.f); return fr.length ? Math.min(...fr) : 0; };
 function voicingPool(S, sig, region) {
@@ -653,7 +672,7 @@ function voicingPool(S, sig, region) {
       if (tones.some((t) => Math.abs(t.a) > maxAcc(S))) continue;
       const from = chordSource(tones, srcs, q);
       if (from === undefined) continue;
-      for (const v of enumVoicings(rootPc, q, S.span, S.dup, region, S.adj)) {
+      for (const v of enumVoicings(rootPc, q, S.span, S.dup, region, S.adj, S.maxFret)) {
         if (!S.inv && v.bass !== 0) continue;
         // On a real guitar (whole neck), keep only fingerings with the index finger at fret 10 or
         // below. CAGED runs are already limited by their position.
@@ -684,7 +703,7 @@ function closePool(S, sig) {
           const notes = base.map((t) => ({ ...t, o: t.o + sh }));
           if (notes.some((t) => posOf(t) < S.lo || posOf(t) > S.hi)) continue;
           const snd = notes.map(sounding);
-          if (snd.some((m) => m < SOUND_LO || m > SOUND_HI)) continue;
+          if (snd.some((m) => m < SOUND_LO || m > OPEN[0] + S.maxFret)) continue;
           out.push({ root: { l, a }, q, inv, notes, size: notes.length, close: true, from });
         }
       }
@@ -709,16 +728,16 @@ const SHAPE_BY = Object.fromEntries(SHAPES.map((x) => [x.id, x]));
 // Playing on a real guitar, positions above 10 (index finger at fret 11 or higher) are
 // hard to reach, on a classical guitar especially, so guitar runs stay at position 10 or below.
 const MAX_GUITAR_POS = 10;
-function shapePositions(sig, shapeId, maxP = NFRETS) {
+function shapePositions(sig, shapeId, maxP = NFRETS, maxF = NFRETS) {
   const sh = SHAPE_BY[shapeId], t = majorTonic(sig);
   const r0 = ((LPC[t.l] + t.a - OPEN[sh.s]) % 12 + 24) % 12;
   const out = [];
-  for (let r = r0; r <= NFRETS; r += 12) { const p = r - sh.off; if (p >= 0 && p + 3 <= NFRETS && p <= maxP) out.push(p); }
+  for (let r = r0; r <= NFRETS; r += 12) { const p = r - sh.off; if (p >= 0 && p + 3 <= maxF && p <= maxP) out.push(p); }
   return out;
 }
 const regionCache = new Map();
-function cagedRegion(sig, p) {
-  const key = `caged:${sig}:${p}`;
+function cagedRegion(sig, p, maxF = NFRETS) {
+  const key = `caged:${sig}:${p}:${maxF}`;
   if (regionCache.has(key)) return regionCache.get(key);
   const ka = keyAccs(sig), scale = new Set();
   for (let l = 0; l < 7; l++) scale.add((LPC[l] + ka[l] + 12) % 12);
@@ -733,11 +752,11 @@ function cagedRegion(sig, p) {
   for (let m = lo; m <= hi; m++) {
     if (!scale.has(m % 12) || have.has(m)) continue;
     for (let s = 0; s < 6; s++) for (const f of [p - 1, p + 4]) {
-      if (f >= 0 && f <= NFRETS && OPEN[s] + f === m) { pattern.add(s * 100 + f); stretch.push({ s, f }); }
+      if (f >= 0 && f <= maxF && OPEN[s] + f === m) { pattern.add(s * 100 + f); stretch.push({ s, f }); }
     }
   }
   const win = [];
-  for (let f = Math.max(0, p - 1); f <= Math.min(NFRETS, p + 4); f++) win.push(f);
+  for (let f = Math.max(0, p - 1); f <= Math.min(maxF, p + 4); f++) win.push(f);
   const region = {
     key, p, pattern, stretch, frets: [win, win, win, win, win, win],
     ok: (s, f, m) => (scale.has(m % 12) ? pattern.has(s * 100 + f) : true),
@@ -766,7 +785,7 @@ const chordName = (c, sig, mode) => `${nName(c.root)} ${c.q.name}, ${INV_NAMES[c
 const DEFAULTS = {
   len: 10, sigs: [-4, -3, -2, -1, 0, 1, 2, 3, 4], ton: 'major',
   quals: QUALS.filter((q) => q.def).map((q) => q.id),
-  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', pos: 'neck', shapes: ['C', 'A', 'G', 'E', 'D'], ops: true, span: 4, dup: false, adj: false, guitar: false, dbl: false, sound: true,
+  inv: true, lo: POS_MIN, hi: 6 * 7 + 0, fit: 'near', pos: 'neck', shapes: ['C', 'A', 'G', 'E', 'D'], ops: true, span: 4, dup: false, adj: false, guitar: false, maxFret: NFRETS, dbl: false, sound: true,
 };
 function normalize(s) {
   const d = { ...DEFAULTS, ...(s || {}) };
@@ -775,7 +794,9 @@ function normalize(s) {
   if (!['major', 'minor', 'both'].includes(d.ton)) d.ton = 'major';
   d.quals = QUALS.map((q) => q.id).filter((id) => (Array.isArray(d.quals) ? d.quals : DEFAULTS.quals).includes(id));
   d.lo = Math.min(POS_MAX, Math.max(POS_MIN, +d.lo || POS_MIN));
-  d.hi = Math.min(POS_MAX, Math.max(d.lo, +d.hi || DEFAULTS.hi));
+  d.maxFret = Math.min(NFRETS, Math.max(5, Math.round(+d.maxFret || NFRETS)));
+  d.hi = Math.min(posMaxFor(d.maxFret), Math.max(d.lo, +d.hi || DEFAULTS.hi));
+  d.lo = Math.min(d.lo, d.hi);
   if (!['near', 'key', 'any'].includes(d.fit)) d.fit = 'near';
   if (!['neck', 'caged'].includes(d.pos)) d.pos = 'neck';
   d.shapes = SHAPES.map((x) => x.id).filter((id) => (Array.isArray(d.shapes) ? d.shapes : DEFAULTS.shapes).includes(id));
@@ -789,6 +810,7 @@ function canon(s) {
   return { len: s.len, sigs: s.sigs.slice(), ton: s.ton, quals: s.quals.slice(), inv: s.inv, lo: s.lo, hi: s.hi, fit: s.fit, ops: s.ops, span: s.span, dup: s.dup, dbl: s.dbl,
     ...(s.adj ? { adj: true } : {}),
     ...(s.guitar ? { guitar: true } : {}),
+    ...(s.maxFret < NFRETS ? { maxFret: s.maxFret } : {}),
     ...(s.pos === 'caged' ? { pos: 'caged', shapes: s.shapes.slice() } : {}) };
 }
 function setupId(s) {
@@ -829,6 +851,7 @@ function setupSub(s) {
     s.ops || s.pos === 'caged' || s.guitar ? `guitar voicings, stretch ≤ ${s.span}` : 'close position',
     (s.ops || s.pos === 'caged' || s.guitar) && s.dup ? 'doubled notes' : null,
     (s.ops || s.pos === 'caged' || s.guitar) && s.adj ? 'adjacent strings' : null,
+    s.maxFret < NFRETS ? `frets up to ${s.maxFret}` : null,
     s.guitar ? 'played on guitar, positions up to 10' : null,
     { near: 'key + neighbours', key: 'key only', any: 'any chords' }[s.fit], s.fit === 'any' && s.dbl ? 'double ♯/♭' : null]
     .filter(Boolean).join(' · ');
@@ -1194,7 +1217,7 @@ try { sharedScroll = +localStorage.getItem(LS_SCROLL) || 0; } catch (e) { /* ign
 class Board {
   constructor(host, opts) {
     this.host = host; this.opts = opts || {};
-    this.markers = []; this.ghosts = []; this.degrees = null; this.only = null; this.band = null;
+    this.markers = []; this.ghosts = []; this.degrees = null; this.only = null; this.band = null; this.nf = NFRETS;
     this.gid = 'wood' + (++boardSeq);
     host.innerHTML = '<div class="fb-scroll"><svg class="fb-svg" xmlns="http://www.w3.org/2000/svg"></svg></div><div class="fb-mini"><div class="fb-mini-win"></div></div>';
     this.scroller = host.querySelector('.fb-scroll');
@@ -1235,19 +1258,20 @@ class Board {
     this.openW = 44; this.gap = 35; this.padT = 22;
     this.boardH = this.padT * 2 + 5 * this.gap;
     this.H = this.boardH + 20;
-    this.W = this.openW + NFRETS * this.fretW + 8;
+    this.W = this.openW + this.nf * this.fretW + 8;
     const { W, H, openW, fretW, padT, gap, boardH } = this;
     let g = `<defs><linearGradient id="${this.gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--wood)"/><stop offset=".5" stop-color="var(--wood)" stop-opacity=".92"/><stop offset="1" stop-color="var(--wood-dark)"/></linearGradient></defs>`;
     g += `<rect x="0" y="0" width="${openW}" height="${boardH}" fill="var(--wood-dark)"/>`;
     g += `<rect x="${openW}" y="0" width="${W - openW}" height="${boardH}" fill="url(#${this.gid})"/>`;
     const midY = padT + 2.5 * gap;
     for (const f of INLAYS) {
+      if (f > this.nf) continue;
       const x = this.cx(f);
       if (f === 12) {
         g += `<circle cx="${x}" cy="${padT + 1.5 * gap}" r="6" fill="var(--pearl)" opacity=".45"/><circle cx="${x}" cy="${padT + 3.5 * gap}" r="6" fill="var(--pearl)" opacity=".45"/>`;
       } else g += `<circle cx="${x}" cy="${midY}" r="6" fill="var(--pearl)" opacity=".45"/>`;
     }
-    for (let f = 1; f <= NFRETS; f++) {
+    for (let f = 1; f <= this.nf; f++) {
       const x = openW + f * fretW;
       g += `<rect x="${x - 1.5}" y="0" width="3" height="${boardH}" fill="var(--fret)"/>`;
     }
@@ -1257,7 +1281,7 @@ class Board {
       const col = s >= 3 ? '#d6b47c' : '#e4e7eb';
       g += `<rect x="0" y="${this.sy(s) - widths[s] / 2}" width="${W}" height="${widths[s]}" fill="${col}"/>`;
     }
-    for (let f = 0; f <= NFRETS; f++) {
+    for (let f = 0; f <= this.nf; f++) {
       g += `<text class="fb-num${INLAYS.includes(f) ? ' dot' : ''}" x="${this.cx(f)}" y="${H - 5}">${f}</text>`;
     }
     g += '<g class="fb-marks"></g>';
@@ -1274,6 +1298,7 @@ class Board {
   buildMini() {
     this.mini.querySelectorAll('.inlay').forEach((n) => n.remove());
     for (const f of INLAYS) {
+      if (f > this.nf) continue;
       const d = document.createElement('div');
       d.className = 'fb-mini-dot inlay';
       d.style.left = (this.cx(f) / this.W * 100) + '%';
@@ -1290,7 +1315,7 @@ class Board {
     const r = this.svg.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
     if (y < 0 || y > this.boardH) return;
-    const f = x < this.openW ? 0 : Math.min(NFRETS, Math.max(1, Math.ceil((x - this.openW) / this.fretW)));
+    const f = x < this.openW ? 0 : Math.min(this.nf, Math.max(1, Math.ceil((x - this.openW) / this.fretW)));
     const s = Math.min(5, Math.max(0, Math.round((y - this.padT) / this.gap)));
     this.opts.onTap(s, f);
   }
@@ -1318,7 +1343,7 @@ class Board {
       g += `<rect class="fb-band" x="${x0}" y="0" width="${x1 - x0}" height="${this.boardH}"/>`;
     }
     if (this.degrees) {
-      for (let s = 0; s < 6; s++) for (let f = 0; f <= NFRETS; f++) {
+      for (let s = 0; s < 6; s++) for (let f = 0; f <= this.nf; f++) {
         const d = this.degrees[(OPEN[s] + f) % 12];
         if (!d) continue;
         if (this.only && !this.only.has(s * 100 + f)) continue;
@@ -1434,13 +1459,15 @@ function buildSetup() {
   $('#loDown').onclick = () => setS({ lo: S.lo - 1 });
   $('#hiUp').onclick = () => setS({ hi: S.hi + 1 });
   $('#hiDown').onclick = () => setS({ hi: Math.max(S.hi - 1, S.lo) });
+  $('#mfDown').onclick = () => setS({ maxFret: S.maxFret - 1 });
+  $('#mfUp').onclick = () => setS({ maxFret: S.maxFret + 1 });
   $('#toPreview').onclick = () => prepareRun(S);
 }
 function whereOnNeck(p) {
   const m = sounding(fromPos(p));
   for (let s = 0; s < 6; s++) {
     const f = m - OPEN[s];
-    if (f >= 0 && f <= NFRETS) return f === 0 ? `${ordinal(s + 1)} string open` : `${ordinal(s + 1)} string, fret ${f}`;
+    if (f >= 0 && f <= S.maxFret) return f === 0 ? `${ordinal(s + 1)} string open` : `${ordinal(s + 1)} string, fret ${f}`;
   }
   return 'off the neck';
 }
@@ -1458,10 +1485,10 @@ function poolStats(s) {
       let keyMin = Infinity;
       for (const sh of s.shapes) {
         let best = 0;
-        const ps = shapePositions(sig, sh, cagedMaxP(s));
+        const ps = positionsFor(s, sig, sh);
         if (!ps.length) { unreachable.push(`${sh} shape in ${keyLabel(sig, 'major')}`); continue; }
         for (const p of ps) {
-          const pool = chordPool(s, sig, cagedRegion(sig, p));
+          const pool = chordPool(s, sig, regionFor(s, sig, p));
           best = Math.max(best, pool.length);
           pool.forEach((c) => quals.add(c.q.id));
         }
@@ -1514,7 +1541,9 @@ function renderSetup() {
   $('#swDbl').setAttribute('aria-checked', S.dbl);
   $('#swSound').setAttribute('aria-checked', S.sound);
   $('#keysHint').textContent = S.sigs.length === 1 ? 'Every run uses this key.' : 'Each run uses one key, picked at random from the ones you select.';
-  $('#loDown').disabled = S.lo <= POS_MIN; $('#hiUp').disabled = S.hi >= POS_MAX;
+  $('#loDown').disabled = S.lo <= POS_MIN; $('#hiUp').disabled = S.hi >= posMaxFor(S.maxFret);
+  $('#mfOut').textContent = S.maxFret;
+  $('#mfDown').disabled = S.maxFret <= 5; $('#mfUp').disabled = S.maxFret >= NFRETS;
   $('#loUp').disabled = S.lo >= S.hi; $('#hiDown').disabled = S.hi <= S.lo;
   $('#rangeLabels').innerHTML = `<span>Lowest <b>${posName(S.lo)}</b><br>${whereOnNeck(S.lo)}</span><span>Highest <b>${posName(S.hi)}</b><br>${whereOnNeck(S.hi)}</span>`;
   if (view === 'setup') drawStaff($('#rangeStaff'), { groups: [[fromPos(S.lo)], [fromPos(S.hi)]], loPos: Math.min(S.lo, 28), hiPos: Math.max(S.hi, 40), scale: 0.9, minBelow: 3 });
@@ -1532,7 +1561,10 @@ function renderSetup() {
   const sn = $('#shapeNote');
   const unr = S.pos === 'caged' && S.sigs.length && S.shapes.length ? poolStats(S).unreachable : [];
   sn.hidden = !unr.length;
-  if (unr.length) sn.textContent = `With guitar input, positions stop at fret 10, so these never come up: ${unr.join(', ')}. Runs in those keys use the other shapes.`;
+  if (unr.length) {
+    const why = [S.maxFret < NFRETS ? `the neck ends at fret ${S.maxFret}` : null, S.guitar ? 'guitar runs stay at position 10 or below' : null].filter(Boolean).join(' and ');
+    sn.textContent = `No position fits (${why}) for: ${unr.join(', ')}. Runs in those keys use the other shapes.`;
+  }
   const qn = $('#qualNote');
   const never = S.sigs.length && S.fit !== 'any' ? S.quals.filter((id) => !poolStats(S).quals.has(id)) : [];
   qn.hidden = !never.length;
@@ -1554,8 +1586,8 @@ function prepareRun(settings) {
     // Pick a key, then a shape, then one of that shape's positions on the neck, skipping empty ones.
     const opts = [];
     for (const k of [sig].concat(s.sigs.filter((x) => x !== sig))) {
-      for (const sh of s.shapes) for (const p of shapePositions(k, sh, cagedMaxP(s))) {
-        const pl = chordPool(s, k, cagedRegion(k, p));
+      for (const sh of s.shapes) for (const p of positionsFor(s, k, sh)) {
+        const pl = chordPool(s, k, regionFor(s, k, p));
         if (pl.length) opts.push({ k, sh, p, pl });
       }
       if (opts.length) break;
@@ -1563,7 +1595,7 @@ function prepareRun(settings) {
     if (!opts.length) { show('setup'); return; }
     const sh = rnd([...new Set(opts.map((o) => o.sh))]);
     const o = rnd(opts.filter((x) => x.sh === sh));
-    sig = o.k; shape = o.sh; region = cagedRegion(o.k, o.p); pool = o.pl;
+    sig = o.k; shape = o.sh; region = regionFor(s, o.k, o.p); pool = o.pl;
   } else pool = chordPool(s, sig);
   if (!pool.length) { show('setup'); return; }
   run = { s, sig, mode, pool, shape, region, idx: 0, items: [], started: false };
@@ -1588,7 +1620,7 @@ function renderPreview() {
     deg[(LPC[l] + ka[l] + 12) % 12] = d + 1;
   }
   if (!pvBoard) pvBoard = new Board($('#pvBoard'), {});
-  pvBoard.degrees = deg; pvBoard.markers = []; pvBoard.ghosts = [];
+  pvBoard.degrees = deg; pvBoard.markers = []; pvBoard.ghosts = []; pvBoard.nf = s.maxFret;
   pvBoard.only = region ? region.pattern : null;
   pvBoard.band = region ? region.p : null;
   pvBoard.layout();
@@ -1619,12 +1651,12 @@ function toggleGuitar() {
   // key; a CAGED run above position 10 moves to the same shape lower down (or is re-picked).
   if (run.shape) {
     let p = run.region.p;
-    if (p > cagedMaxP(run.s) || !chordPool(run.s, run.sig, cagedRegion(run.sig, p)).length) {
-      const alts = shapePositions(run.sig, run.shape, cagedMaxP(run.s)).filter((x) => chordPool(run.s, run.sig, cagedRegion(run.sig, x)).length);
+    if (p > cagedMaxP(run.s) || !chordPool(run.s, run.sig, regionFor(run.s, run.sig, p)).length) {
+      const alts = positionsFor(run.s, run.sig, run.shape).filter((x) => chordPool(run.s, run.sig, regionFor(run.s, run.sig, x)).length);
       if (!alts.length) { prepareRun(run.s); return; }
       p = rnd(alts);
     }
-    run.region = cagedRegion(run.sig, p);
+    run.region = regionFor(run.s, run.sig, p);
     run.pool = chordPool(run.s, run.sig, run.region);
   } else {
     run.pool = chordPool(run.s, run.sig);
@@ -1666,6 +1698,7 @@ async function startRun() {
   run.idx = 0; run.items = [];
   $('#runKey').textContent = keyLabel(run.sig, run.mode) + (run.shape ? ` · ${run.shape} shape` : '');
   runBoard.band = run.region ? run.region.p : null;
+  runBoard.nf = run.s.maxFret;
   runBoard.layout();
   if (run.region) runBoard.showFrets(Math.max(0, run.region.p - 1), run.region.p + 4, false);
   nextChord();
@@ -1833,7 +1866,7 @@ function reveal() {
   const center = B.centerFret();
   const ps = cur.target;
   let best = null, bestScore = Infinity;
-  for (const a of (cur.c.fingerings || allAssignments(ps))) {
+  for (const a of (cur.c.fingerings || allAssignments(ps, run.s.maxFret))) {
     const fr = a.map((k) => k.f);
     const fretted = fr.filter((f) => f > 0);
     const span = fretted.length ? Math.max(...fretted) - Math.min(...fretted) : 0;
@@ -1844,7 +1877,7 @@ function reveal() {
   if (!best) {
     best = ps.map((m) => {
       let pick = null, d = Infinity;
-      for (let s = 0; s < 6; s++) { const f = m - OPEN[s]; if (f >= 0 && f <= NFRETS && Math.abs(f - center) < d) { d = Math.abs(f - center); pick = { s, f, m }; } }
+      for (let s = 0; s < 6; s++) { const f = m - OPEN[s]; if (f >= 0 && f <= run.s.maxFret && Math.abs(f - center) < d) { d = Math.abs(f - center); pick = { s, f, m }; } }
       return pick;
     }).filter(Boolean);
   }
@@ -2021,7 +2054,7 @@ function start(hotData) {
   show(hotData && hotData.view === 'history' ? 'history' : 'setup');
   store.initCloud();
   // test hook
-  window.__fcd = { MAX_GUITAR_POS, indexFret, toggleGuitar, NoteListener, mic, needFrames, onMicFrame, get view() { return view; }, poolStats, cagedRegion, shapePositions, SHAPES, chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
+  window.__fcd = { posMaxFor, regionFor, positionsFor, MAX_GUITAR_POS, indexFret, toggleGuitar, NoteListener, mic, needFrames, onMicFrame, get view() { return view; }, poolStats, cagedRegion, shapePositions, SHAPES, chordPool, buildChord, keyAccs, majorTonic, minorTonic, midiOf, sounding, canAssign, setupId, normalize, get run() { return run; }, get board() { return runBoard; }, onTap, check, store };
 }
 if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
   try { window.claude.hot.snapshot(() => ({ settings: S, view: view === 'history' ? 'history' : 'setup' })); } catch (e) { /* ignore */ }
